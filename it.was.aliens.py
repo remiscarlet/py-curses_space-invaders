@@ -45,7 +45,7 @@ Known Bugs:
 # Configs #
 ###########
 
-BOARD_HEIGHT: int = 5
+BOARD_HEIGHT: int = 10
 BOARD_WIDTH: int = 25
 ENEMY_COUNT: int = BOARD_WIDTH * 2
 TICKS_PER_MINUTE: int = 120
@@ -500,11 +500,13 @@ class SpaceInvaders:
     SHOOT_TICK: int = 1  # Number of ticks for "bullet" to travel forward one cell
     SHOOT_DELAY: int = 2  # Can shoot once every SHOOT_DELAY ticks.
 
-    PLAYER_SYMBOL: str = "♕"
+    # PLAYER_SYMBOL: str = "♕"
+    PLAYER_SYMBOL: str = "ﾑ"
     PLAYER_SYMBOL_FALLBACK: str = "P"
     PLAYER_COLOR: int = curses.COLOR_RED
 
-    ENEMY_SYMBOL: str = "☠"
+    # ENEMY_SYMBOL: str = "☠"
+    ENEMY_SYMBOL: str = "ｪ"
     ENEMY_SYMBOL_FALLBACK: str = "A"
     ENEMY_COLORS: List[int] = [
         curses.COLOR_GREEN,
