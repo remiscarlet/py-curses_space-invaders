@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import copy
 import enum
 import time
 import curses
 import random
 import logging
-from dataclasses import dataclass
+import itertools
 
+from dataclasses import dataclass
 from typing import Optional, List, Dict, Tuple
 
 """
@@ -45,24 +48,84 @@ Known Bugs:
 # Configs #
 ###########
 
-BOARD_HEIGHT: int = 10
-BOARD_WIDTH: int = 25
-ENEMY_COUNT: int = BOARD_WIDTH * 2
-TICKS_PER_MINUTE: int = 120
 
-TICKS_PER_ENEMY_MOVEMENT = 2
+class Config:
+    BOARD_HEIGHT: int = 15
+    BOARD_WIDTH: int = 25
+    ENEMY_COUNT: int = BOARD_WIDTH * 2
+    ENEMY_SPACING: int = 2
+    TICKS_PER_MINUTE: int = 120
 
-LOG_PATH = "it.was.aliens.log"
+    TICKS_PER_ENEMY_MOVEMENT = 2
+
+    LOG_PATH = "it.was.aliens.log"
+
 
 #########################
 # No touchy beyond here #
 #########################
 
-BORDER_WIDTH: int = (
-    1  # Eh... please don't change this for now. Multi-cell width borders are blegh.
-)
-TRUE_BOARD_WIDTH = BOARD_WIDTH + 2 * BORDER_WIDTH
-TRUE_BOARD_HEIGHT = BOARD_HEIGHT + 2 * BORDER_WIDTH
+
+class WindowConfig:
+    """
+    Layout:
+    -------------  <-|-- BORDER_WIDTH
+    | TITLE BAR |     |
+    |-----------|   <-|-- TITLE_BAR_HEIGHT
+    |           |      |
+    |   GAME    |      |
+    |  WINDOW   |      |
+    |           |    <-|-- BOARD_HEIGHT # BOARD_HEIGHT does _not_ include the bottom border size due to it being the game board on the inside of borders.
+    |-----------|     <-|-- BORDER_WIDTH
+    | STATS BAR |        |
+    -------------      <-|-- PLAYER_STATS_HEIGHT
+    """
+
+    BORDER_WIDTH: int = (
+        1  # Eh... please don't change this for now. Multi-cell width borders are blegh.
+    )
+
+    ROWS_FOR_MISC_DATA = 1
+    TITLE_BAR_HEIGHT = 1 + BORDER_WIDTH  # 1 row for title + border width
+    PLAYER_STATS_HEIGHT = 1 + BORDER_WIDTH  # 1 row for all stats + border width
+
+    TRUE_BOARD_WIDTH = Config.BOARD_WIDTH + 2 * BORDER_WIDTH
+    TRUE_BOARD_HEIGHT = (
+        Config.BOARD_HEIGHT + 2 * BORDER_WIDTH + TITLE_BAR_HEIGHT + PLAYER_STATS_HEIGHT
+    )
+
+    OFFSET_ROWS_TO_DRAW_HORIZONTAL: List[int] = [
+        0,
+        TITLE_BAR_HEIGHT,
+        Config.BOARD_HEIGHT + BORDER_WIDTH,
+        PLAYER_STATS_HEIGHT,
+    ]
+
+    WINDOW_TITLE: str = "Space Invaders!"
+    WINDOW_TITLE_DRAW_POS: Tuple[int, int] = (
+        BORDER_WIDTH,
+        TRUE_BOARD_WIDTH // 2 - len(WINDOW_TITLE) // 2,
+    )  # (y, x)
+
+    PAUSED_TEXT: str = "PAUSED"
+    PAUSED_TEXT_DRAW_POS: Tuple[int, int] = (
+        BORDER_WIDTH + TITLE_BAR_HEIGHT + (Config.BOARD_HEIGHT // 2),
+        TRUE_BOARD_WIDTH // 2 - len(PAUSED_TEXT) // 2,
+    )
+
+    @staticmethod
+    def getRowsToDrawHorizontals() -> List[int]:
+        rows = list(itertools.accumulate(WindowConfig.OFFSET_ROWS_TO_DRAW_HORIZONTAL))
+        assert rows[-1] == WindowConfig.TRUE_BOARD_HEIGHT - 1
+        return rows
+
+    @staticmethod
+    def convertToTrueY(y: int) -> int:
+        return WindowConfig.TITLE_BAR_HEIGHT + WindowConfig.BORDER_WIDTH + y
+
+    @staticmethod
+    def convertToTrueX(x: int) -> int:
+        return WindowConfig.BORDER_WIDTH + x
 
 
 # Logging
@@ -73,7 +136,7 @@ logger.setLevel(logging.DEBUG)
 
 formatter = logging.Formatter("[%(asctime)s][%(levelname)s] %(message)s")
 
-file_handler = logging.FileHandler(LOG_PATH)
+file_handler = logging.FileHandler(Config.LOG_PATH)
 file_handler.setLevel(logging.DEBUG)
 file_handler.setFormatter(formatter)
 
@@ -105,43 +168,34 @@ class Entity:
     color: int
     entity_type: EntityType
 
+    sizes: WindowConfig
+
     position: Tuple[int, int]  # y,x as per curses format
 
     ticks_since_last_move: int = 0
 
-    def __init__(self, symbol: str, color: int, entity_type: EntityType):
-        global TRUE_BOARD_WIDTH, TRUE_BOARD_HEIGHT
-
-        self.TRUE_BOARD_WIDTH = TRUE_BOARD_WIDTH
-        self.TRUE_BOARD_HEIGHT = TRUE_BOARD_HEIGHT
-
-        global BOARD_WIDTH, BOARD_HEIGHT
-        self.BOARD_WIDTH = BOARD_WIDTH
-        self.BOARD_HEIGHT = BOARD_HEIGHT
-
-        global TICKS_PER_ENEMY_MOVEMENT
-        self.TICKS_PER_ENEMY_MOVEMENT = TICKS_PER_ENEMY_MOVEMENT
-
+    def __init__(self, symbol: str, color: int, entity_type: EntityType) -> None:
         self.symbol = symbol
         self.color = color
         self.entity_type = entity_type
 
-    def __str__(self):
+    def __str__(self) -> str:
         try:
-            return (
-                f"{EntityType(self.entity_type).name} - {self.symbol} - {self.position}"
-            )
+            return f"{EntityType(self.entity_type).name}-{self.symbol}-{self.position}"
         except AttributeError:
-            return f"{EntityType(self.entity_type).name} - {self.symbol} - NoPos"
+            return f"{EntityType(self.entity_type).name}-{self.symbol}-NoPos"
 
-    def setInitialPosition(self, y, x):
+    def __log(self, msg: str) -> None:
+        logger.debug(f"{self}: {msg}")
+
+    def setInitialPosition(self, y: int, x: int) -> None:
         """
         This function assumes BOARD_WIDTH/HEIGHT as the bounds and _not_ TRUE_BOARD_WIDTH/HEIGHT
         """
-        logger.debug(f"Setting initial position: {y}, {x} - is true size")
+        self.__log(f"Setting initial position: {y}, {x} - is true size")
         self.position = (y, x)
 
-    def getPos(self):
+    def getPos(self) -> Tuple[int, int]:
         try:
             return self.position
         except:
@@ -149,38 +203,54 @@ class Entity:
                 "This Entity doesn't have a position set but getPos() was called!"
             )
 
-    def genNextDeltas(self, curr_y: int, curr_x: int) -> Tuple[int, int]:
+    def genNextPosOffset(
+        self, curr_y: int, curr_x: int, depth: int = 1
+    ) -> Tuple[int, int]:
         """
         Assumes the correct "next pos" is open and valid to move to.
+
+        The `depth` arg is "how many steps ahead do you want", ie can get
+        the pos for
         """
 
-        logger.debug(f"Generating next deltas from pos: {curr_y},{curr_x}")
+        self.__log(f"Generating next deltas from pos: {curr_y},{curr_x}")
 
         dx = -1 if curr_y % 2 == 1 else +1  # Left if odd row, Right if even row
-
         if dx == -1:
-            can_move_horizontal = self.canMoveLeft()
+            can_move_horizontal = self.canMoveLeft((curr_y, curr_x))
         else:
-            can_move_horizontal = self.canMoveRight()
+            can_move_horizontal = self.canMoveRight((curr_y, curr_x))
 
         if not can_move_horizontal:
             if not self.canMoveDown():
                 raise Exception(
                     "genNextPos() determined moving down is impossible! (Game over?)"
                 )
-            logger.debug(f"Next delta: {+1},{0}")
-            return (+1, 0)
+            self.__log(f"Next delta: {+1},{0}")
+            offset = (+1, 0)
         else:
-            logger.debug(f"Next delta: {0},{dx}")
-            return (0, dx)
+            self.__log(f"Next delta: {0},{dx}")
+            offset = (0, dx)
 
-    def moveToNextPos(self, board):
+        if depth > 1:
+            offset_y, offset_x = offset
+            next_y, next_x = curr_y + offset_y, curr_x + offset_x
+            next_offset_y, next_offset_x = self.genNextPosOffset(
+                next_y, next_x, depth - 1
+            )
+
+            offset = (offset_y + next_offset_y, offset_x + next_offset_x)
+
+        self.__log(f"offset for depth:{depth} - {offset}")
+        return offset
+
+    def moveToNextPos(self, board: Board) -> None:
         """
         Assumes this method is called on Entity every tick.
         """
-        if self.ticks_since_last_move > self.TICKS_PER_ENEMY_MOVEMENT:
+        if self.ticks_since_last_move > Config.TICKS_PER_ENEMY_MOVEMENT:
             old_y, old_x = self.position
-            dy, dx = self.genNextDeltas(old_y, old_x)
+            dy, dx = self.genNextPosOffset(old_y, old_x)
             new_y, new_x = old_y + dy, old_x + dx
 
             if board.isPosOccupied(new_y, new_x):
@@ -193,16 +263,18 @@ class Entity:
 
         self.ticks_since_last_move += 1
 
-    def __isOutOfBounds(self, y, x):
+    def __isOutOfBounds(self, y: int, x: int) -> bool:
         """
-        Assumes non-true boardsize. Ie, self.BOARD_WIDTH/HEIGHT instead of TRUE_BOARD_WIDTH/HEIGHT
+        Assumes non-true boardsize. Ie, Config.BOARD_WIDTH/HEIGHT instead of TRUE_BOARD_WIDTH/HEIGHT
         """
 
-        logger.debug(
-            f"x:{x} < 0 or x:{x} > {self.BOARD_WIDTH - 1} or y:{y} < 0 or y:{y} > {self.BOARD_HEIGHT - 1}"
+        self.__log(
+            f"x:{x} < 0 or x:{x} > {Config.BOARD_WIDTH - 1} or y:{y} < 0 or y:{y} > {Config.BOARD_HEIGHT - 1}"
         )
 
-        return x < 0 or x > self.BOARD_WIDTH - 1 or y < 0 or y > self.BOARD_HEIGHT - 1
+        return (
+            x < 0 or x > Config.BOARD_WIDTH - 1 or y < 0 or y > Config.BOARD_HEIGHT - 1
+        )
 
     """
     All move* methods will error out if the destination
@@ -211,36 +283,39 @@ class Entity:
     All canMove* functions do _not_ check if the next pos is occupied.
     """
 
-    def canMoveLeft(self):
-        return self.__canMove(0, -1)
+    def canMoveLeft(self, custom_pos: Optional[Tuple[int, int]] = None) -> bool:
+        return self.__canMove(0, -1, custom_pos)
 
-    def moveLeft(self, board):
+    def moveLeft(self, board: Board):
         self.__move(board, 0, -1)
 
-    def canMoveRight(self):
-        return self.__canMove(0, +1)
+    def canMoveRight(self, custom_pos: Optional[Tuple[int, int]] = None) -> bool:
+        return self.__canMove(0, +1, custom_pos)
 
-    def moveRight(self, board):
+    def moveRight(self, board: Board):
         self.__move(board, 0, +1)
 
-    def canMoveUp(self):
-        return self.__canMove(-1, 0)
+    def canMoveUp(self, custom_pos: Optional[Tuple[int, int]] = None) -> bool:
+        return self.__canMove(-1, 0, custom_pos)
 
-    def moveUp(self, board):
+    def moveUp(self, board: Board):
         self.__move(board, -1, 0)  # Curses uses quadrant IV instead of the usual I
 
-    def canMoveDown(self):
-        return self.__canMove(+1, 0)
+    def canMoveDown(self, custom_pos: Optional[Tuple[int, int]] = None) -> bool:
+        return self.__canMove(+1, 0, custom_pos)
 
-    def moveDown(self, board):
+    def moveDown(self, board: Board):
         self.__move(board, +1, 0)
 
-    def __canMove(self, dy, dx):
-        old_y, old_x = self.position
+    def __canMove(self, dy: int, dx: int, custom_pos: Optional[Tuple[int, int]] = None):
+        if custom_pos:
+            old_y, old_x = custom_pos
+        else:
+            old_y, old_x = self.position
         new_y, new_x = (old_y + dy, old_x + dx)
         return not self.__isOutOfBounds(new_y, new_x)
 
-    def __move(self, board, dy, dx):
+    def __move(self, board: Board, dy: int, dx: int):
         old_y, old_x = self.position
         new_y, new_x = (old_y + dy, old_x + dx)
 
@@ -248,10 +323,10 @@ class Entity:
             raise Exception("Entity is being moved out of bounds!")
 
         if board.isPosOccupied(new_y, new_x):
-            logger.debug(f"{board.getEntityAtPos(new_y, new_x)}")
+            self.__log(f"{board.getEntityAtPos(new_y, new_x)}")
             raise Exception("Destination cell is already occupied!")
 
-        logger.info(f"Moved from old pos {old_y},{old_x} to new pos {new_y},{new_x}")
+        self.__log(f"Moved from old pos {old_y},{old_x} to new pos {new_y},{new_x}")
 
         board.setEntityAtPos(old_y, old_x, None)
         board.setEntityAtPos(new_y, new_x, self)
@@ -308,7 +383,7 @@ class InputManager:
     }
 
     groups: Dict[InputType, List[int]] = {
-        InputType.MOVEMENT: [ord("w"), ord("a"), ord("s"), ord("d")],
+        InputType.MOVEMENT: [curses.KEY_LEFT, ord("a"), curses.KEY_RIGHT, ord("d")],
         InputType.FIRE: [ord(" ")],
         InputType.QUIT: [ord("q")],
         InputType.PAUSE: [ord("p")],
@@ -359,10 +434,11 @@ class InputManager:
 class Board:
     board: List[List[Optional[Entity]]]
 
+    # If one imagines the enemies as a line that snakes at the top
+    # of the screen, enemies_alive is ordered FILO
     enemies_alive: List[Entity] = []
 
     def __init__(self, player: Entity, enemies: List[Entity], num_enemies: int) -> None:
-        self.__copyGlobalSettings()
         self.__initializeBoard()
         self.__populateBoard(player, enemies, num_enemies)
 
@@ -371,26 +447,34 @@ class Board:
         Initialize the board with empty cells and draw border
         """
         board: List[List[Optional[Entity]]] = [
-            [None] * self.TRUE_BOARD_WIDTH for _ in range(self.TRUE_BOARD_HEIGHT)
+            [None] * WindowConfig.TRUE_BOARD_WIDTH
+            for _ in range(WindowConfig.TRUE_BOARD_HEIGHT)
         ]
 
-        assert self.BORDER_WIDTH == 1
+        assert WindowConfig.BORDER_WIDTH == 1  # Pls no multi-width borders...
 
-        # Vertical borders
-        right_border_x = self.TRUE_BOARD_WIDTH - 1
-        for y in range(1, self.TRUE_BOARD_HEIGHT - 1):  # Don't draw vertical in corners
-            board[y][0] = Borders.VERTICAL
-            board[y][right_border_x] = Borders.VERTICAL
+        rows_to_draw = WindowConfig.getRowsToDrawHorizontals()
 
-        # Horizontal borders
-        bot_border_y = self.TRUE_BOARD_HEIGHT - 1
-        for x in range(1, self.TRUE_BOARD_WIDTH - 1):
-            board[0][x] = Borders.HORIZONTAL
-            board[bot_border_y][x] = Borders.HORIZONTAL
+        # Non-corner Vertical borders
+        right_border_x = WindowConfig.TRUE_BOARD_WIDTH - 1
+        for y in range(1, WindowConfig.TRUE_BOARD_HEIGHT - 1):
+            if y in rows_to_draw[1:-1]:  # Bounds check?
+                # Draw an intersection
+                board[y][0] = Borders.INTERSECT_LEFT
+                board[y][right_border_x] = Borders.INTERSECT_RIGHT
+            else:
+                # Draw a vertical line
+                board[y][0] = Borders.VERTICAL
+                board[y][right_border_x] = Borders.VERTICAL
+
+        # Non-corner Horizontal borders
+        for x in range(1, WindowConfig.TRUE_BOARD_WIDTH - 1):
+            for y in rows_to_draw:
+                board[y][x] = Borders.HORIZONTAL
 
         # Corners
-        max_x = self.TRUE_BOARD_WIDTH - 1
-        max_y = self.TRUE_BOARD_HEIGHT - 1
+        max_x = WindowConfig.TRUE_BOARD_WIDTH - 1
+        max_y = WindowConfig.TRUE_BOARD_HEIGHT - 1
         board[0][0] = Borders.TOP_LEFT
         board[0][max_x] = Borders.TOP_RIGHT
         board[max_y][0] = Borders.BOT_LEFT
@@ -409,8 +493,8 @@ class Board:
         """
 
         # Place player
-        player_y = self.BOARD_HEIGHT - 1
-        player_x = self.BOARD_WIDTH // 2
+        player_y = Config.BOARD_HEIGHT - 1
+        player_x = Config.BOARD_WIDTH // 2
         self.setEntityAtPos(player_y, player_x, player)
         player.setInitialPosition(player_y, player_x)
 
@@ -423,31 +507,13 @@ class Board:
             self.setEntityAtPos(enemy_y, enemy_x, enemy)
             enemy.setInitialPosition(enemy_y, enemy_x)
 
-            dy, dx = enemy.genNextDeltas(enemy_y, enemy_x)
+            dy, dx = enemy.genNextPosOffset(enemy_y, enemy_x, Config.ENEMY_SPACING)
             enemy_y += dy
             enemy_x += dx
 
-            # If one images the enemies as a line that snakes at the top
-            # of the screen, enemies_alive is ordered FILO
             self.enemies_alive.append(enemy)
 
         logger.info("===== Done populating initial entity positions.")
-
-    def __copyGlobalSettings(self) -> None:
-        """
-        Not the prettiest but floaty globals are icky too.
-        Needs to all be one gist so no config yamls either.
-        Gross.
-        """
-
-        global BORDER_WIDTH, BOARD_HEIGHT, BOARD_WIDTH
-        global TRUE_BOARD_HEIGHT, TRUE_BOARD_WIDTH
-
-        self.BORDER_WIDTH = BORDER_WIDTH
-        self.BOARD_HEIGHT = BOARD_HEIGHT
-        self.BOARD_WIDTH = BOARD_WIDTH
-        self.TRUE_BOARD_HEIGHT = TRUE_BOARD_HEIGHT
-        self.TRUE_BOARD_WIDTH = TRUE_BOARD_WIDTH
 
     def getBoard(self) -> List[List[Optional[Entity]]]:
         return self.board
@@ -460,10 +526,10 @@ class Board:
         Assumes non-true board width/height
         """
 
-        y += self.BORDER_WIDTH
-        x += self.BORDER_WIDTH
+        true_y = WindowConfig.convertToTrueY(y)
+        true_x = WindowConfig.convertToTrueX(x)
 
-        return self.board[y][x]
+        return self.board[true_y][true_x]
 
     def isPosOccupied(self, y: int, x: int) -> bool:
         return self.getEntityAtPos(y, x) != None
@@ -477,14 +543,14 @@ class Board:
         ie ignoring the borders
         """
 
-        y += self.BORDER_WIDTH
-        x += self.BORDER_WIDTH
+        true_y = WindowConfig.convertToTrueY(y)
+        true_x = WindowConfig.convertToTrueX(x)
 
-        logger.debug(f"Setting true pos: {y},{x}")
-        assert y > 0 and y < self.TRUE_BOARD_HEIGHT - 1
-        assert x > 0 and x < self.TRUE_BOARD_WIDTH - 1
+        logger.debug(f"Setting true pos: {true_y},{true_x}")
+        assert true_x > 0 and true_x < WindowConfig.TRUE_BOARD_WIDTH - 1
+        assert true_y > 0 and true_y < WindowConfig.TRUE_BOARD_HEIGHT - 1
 
-        self.board[y][x] = entity
+        self.board[true_y][true_x] = entity
 
 
 class SpaceInvaders:
@@ -506,7 +572,8 @@ class SpaceInvaders:
     PLAYER_COLOR: int = curses.COLOR_RED
 
     # ENEMY_SYMBOL: str = "☠"
-    ENEMY_SYMBOL: str = "ｪ"
+    # ENEMY_SYMBOL: str = "ｪ"
+    ENEMY_SYMBOL: str = "◦"
     ENEMY_SYMBOL_FALLBACK: str = "A"
     ENEMY_COLORS: List[int] = [
         curses.COLOR_GREEN,
@@ -527,11 +594,10 @@ class SpaceInvaders:
 
         self.inputManager = InputManager(self.stdscr)
 
-        self.copyGlobalSettings()
         self.ensureScreenLargeEnough()
         self.initializeEntities()
 
-        self.board = Board(self.player, self.enemies, self.ENEMY_COUNT)
+        self.board = Board(self.player, self.enemies, Config.ENEMY_COUNT)
 
     def __del__(self) -> None:
         self.stdscr.keypad(False)
@@ -541,32 +607,13 @@ class SpaceInvaders:
         curses.endwin()
         curses.curs_set(True)
 
-    def copyGlobalSettings(self) -> None:
-        """
-        Not the prettiest but floaty globals are icky too.
-        Needs to all be one gist so no config yamls either.
-        Gross.
-        """
-
-        global BORDER_WIDTH, BOARD_HEIGHT, BOARD_WIDTH
-        global TRUE_BOARD_HEIGHT, TRUE_BOARD_WIDTH
-        global ENEMY_COUNT, TICKS_PER_MINUTE
-
-        self.BORDER_WIDTH = BORDER_WIDTH
-        self.BOARD_HEIGHT = BOARD_HEIGHT
-        self.BOARD_WIDTH = BOARD_WIDTH
-        self.TRUE_BOARD_HEIGHT = TRUE_BOARD_HEIGHT
-        self.TRUE_BOARD_WIDTH = TRUE_BOARD_WIDTH
-        self.ENEMY_COUNT = ENEMY_COUNT
-        self.TICKS_PER_MINUTE = TICKS_PER_MINUTE
-
     def ensureScreenLargeEnough(self) -> None:
         """
         Maybe can just throw in __init__()?
         """
-        if curses.LINES < self.BOARD_HEIGHT or curses.COLS < self.BOARD_WIDTH:
+        if curses.LINES < Config.BOARD_HEIGHT or curses.COLS < Config.BOARD_WIDTH:
             raise Exception(
-                f"Screen is not large enough. Please increase so there is a minimum of {self.BOARD_WIDTH} x {self.BOARD_HEIGHT}"
+                f"Screen is not large enough. Please increase so there is a minimum of {Config.BOARD_WIDTH} x {Config.BOARD_HEIGHT}"
             )
 
     def initializeEntities(self) -> None:
@@ -593,10 +640,10 @@ class SpaceInvaders:
         def new_tick_start() -> bool:
             return target_tick_dur_milli < time.time_ns() - curr_tick_start_milli
 
-        target_tick_dur_milli = 60 * 1000 / self.TICKS_PER_MINUTE
+        target_tick_dur_milli = 60 * 1000 / Config.TICKS_PER_MINUTE
         curr_tick_start_milli = time.time_ns()
 
-        min_delay = 0.1  # seconds
+        min_delay = 0.2  # seconds
 
         while True:
             self.inputManager.storeInput()
@@ -607,19 +654,16 @@ class SpaceInvaders:
             if new_tick_start():
                 curr_tick_start_milli = time.time_ns()
 
-                if not self.is_paused:
-                    logger.debug(f"New tick started at: {curr_tick_start_milli}")
-                    self.update()
-
+                self.update()
                 self.draw()
 
             time.sleep(min_delay)
 
     def updatePlayer(self, pressed_key: int) -> None:
-        if pressed_key == ord("a") and self.player.canMoveLeft():
+        if pressed_key in (curses.KEY_LEFT, ord("a")) and self.player.canMoveLeft():
             logger.info("Moving ship to the left")
             self.player.moveLeft(self.board)
-        elif pressed_key == ord("d") and self.player.canMoveRight():
+        elif pressed_key in (curses.KEY_RIGHT, ord("d")) and self.player.canMoveRight():
             logger.info("Moving ship to the right")
             self.player.moveRight(self.board)
 
@@ -643,12 +687,23 @@ class SpaceInvaders:
             if group == InputType.PAUSE:
                 self.togglePause()
 
-            if group in (InputType.MOVEMENT, InputType.FIRE):
+            if not self.is_paused and group in (InputType.MOVEMENT, InputType.FIRE):
                 self.updatePlayer(pressed_key)
 
-        self.updateEnemies()
+        if not self.is_paused:
+            self.updateEnemies()
 
     def draw(self) -> None:
+        if not self.is_paused:
+            self.drawGameEntities()
+        else:
+            self.drawPauseScreen()
+
+        self.drawText()
+
+        self.stdscr.refresh()
+
+    def drawGameEntities(self) -> None:
         for y, row_data in enumerate(self.board.getBoard()):
             for x, entity in enumerate(row_data):
                 if entity is not None:
@@ -656,7 +711,13 @@ class SpaceInvaders:
                 else:
                     self.stdscr.addch(y, x, " ")
 
-        self.stdscr.refresh()
+    def drawPauseScreen(self):
+        text_y, text_x = WindowConfig.PAUSED_TEXT_DRAW_POS
+        self.stdscr.addstr(text_y, text_x, WindowConfig.PAUSED_TEXT)
+
+    def drawText(self) -> None:
+        title_y, title_x = WindowConfig.WINDOW_TITLE_DRAW_POS
+        self.stdscr.addstr(title_y, title_x, WindowConfig.WINDOW_TITLE)
 
 
 class Borders:
@@ -666,6 +727,8 @@ class Borders:
     TOP_RIGHT = Entity("╗", curses.COLOR_WHITE, EntityType.BORDER)
     BOT_LEFT = Entity("╚", curses.COLOR_WHITE, EntityType.BORDER)
     BOT_RIGHT = Entity("╝", curses.COLOR_WHITE, EntityType.BORDER)
+    INTERSECT_LEFT = Entity("╠", curses.COLOR_WHITE, EntityType.BORDER)
+    INTERSECT_RIGHT = Entity("╣", curses.COLOR_WHITE, EntityType.BORDER)
 
 
 class Entities:
