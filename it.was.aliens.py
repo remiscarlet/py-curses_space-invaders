@@ -12,6 +12,7 @@ import itertools
 from dataclasses import dataclass
 from typing import Optional, List, Dict, Tuple
 
+
 """
 What Is:
     - Space Invaders implemented with curses and Python 3.x
@@ -28,6 +29,8 @@ Currently Does:
     - Pausing ('P')
     - Player Movement ('A' or 'D')
     - Enemy Movement (Snakes down from top to bot)
+    - Title/Pause Text
+    - Colors
 
 Features To Implement:
     - Shooting/Destroying enemies
@@ -54,9 +57,9 @@ class Config:
     BOARD_WIDTH: int = 25
     ENEMY_COUNT: int = BOARD_WIDTH * 2
     ENEMY_SPACING: int = 2
-    TICKS_PER_MINUTE: int = 120
+    TICKS_PER_MINUTE: int = 360
 
-    TICKS_PER_ENEMY_MOVEMENT = 2
+    TICKS_PER_ENEMY_MOVEMENT = 3
 
     LOG_PATH = "it.was.aliens.log"
 
@@ -66,8 +69,93 @@ class Config:
 #########################
 
 
+# Logging
+
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+formatter = logging.Formatter("[%(asctime)s][%(levelname)s] %(message)s")
+
+file_handler = logging.FileHandler(Config.LOG_PATH)
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(formatter)
+
+logger.addHandler(file_handler)
+
+
+# Enums
+
+
+class EntityType(enum.Enum):
+    PLAYER = 0
+    ENEMY = 1
+    OBSTACLE = 2
+    BORDER = 3
+
+
+class InputType(enum.Enum):
+    MOVEMENT = 0
+    FIRE = 1
+    QUIT = 2
+    PAUSE = 3
+
+
+# Classes
+
+
+class Colors:
+    """
+    Implements curses color helpers
+
+    Due to needing to initialize colors after the call to curses.initscr(), we
+    initialize Colors() for the first time in SpaceInvaders.__init__(). This is because
+    we use curses.wrapper() meaning we can't actually call curses.init_pair()
+    until SpaceInvaders() has also been initialized (through curses.wrapper())
+    """
+
+    RED: int = 1
+    GREEN: int = 2
+    YELLOW: int = 3
+    CYAN: int = 4
+    MAGENTA: int = 5
+    WHITE: int = 6
+
+    mapping: Dict[
+        int, int
+    ] = {}  # The value 'int' is a curses attribute which is an int bitmask
+
+    def __init__(self):
+        curses.init_pair(self.RED, curses.COLOR_RED, curses.COLOR_BLACK)
+        Colors.mapping[self.RED] = curses.color_pair(self.RED)
+
+        curses.init_pair(self.GREEN, curses.COLOR_GREEN, curses.COLOR_BLACK)
+        Colors.mapping[self.GREEN] = curses.color_pair(self.GREEN)
+
+        curses.init_pair(self.YELLOW, curses.COLOR_YELLOW, curses.COLOR_BLACK)
+        Colors.mapping[self.YELLOW] = curses.color_pair(self.YELLOW)
+
+        curses.init_pair(self.CYAN, curses.COLOR_CYAN, curses.COLOR_BLACK)
+        Colors.mapping[self.CYAN] = curses.color_pair(self.CYAN)
+
+        curses.init_pair(self.MAGENTA, curses.COLOR_MAGENTA, curses.COLOR_BLACK)
+        Colors.mapping[self.MAGENTA] = curses.color_pair(self.MAGENTA)
+
+        curses.init_pair(self.WHITE, curses.COLOR_WHITE, curses.COLOR_BLACK)
+        Colors.mapping[self.WHITE] = curses.color_pair(self.WHITE)
+
+    @staticmethod
+    def getAttr(color_id: int):
+        if color_id not in Colors.mapping:
+            raise Exception(f"Got a color ID that we haven't mapped! Got: {color_id}")
+        return Colors.mapping[color_id]
+
+
 class WindowConfig:
     """
+    This class houses consts related to "window" sizes - ie cell width/lengths
+    for various components of the UI.
+
     Layout:
     -------------  <-|-- BORDER_WIDTH
     | TITLE BAR |     |
@@ -85,14 +173,8 @@ class WindowConfig:
         1  # Eh... please don't change this for now. Multi-cell width borders are blegh.
     )
 
-    ROWS_FOR_MISC_DATA = 1
     TITLE_BAR_HEIGHT = 1 + BORDER_WIDTH  # 1 row for title + border width
     PLAYER_STATS_HEIGHT = 1 + BORDER_WIDTH  # 1 row for all stats + border width
-
-    TRUE_BOARD_WIDTH = Config.BOARD_WIDTH + 2 * BORDER_WIDTH
-    TRUE_BOARD_HEIGHT = (
-        Config.BOARD_HEIGHT + 2 * BORDER_WIDTH + TITLE_BAR_HEIGHT + PLAYER_STATS_HEIGHT
-    )
 
     OFFSET_ROWS_TO_DRAW_HORIZONTAL: List[int] = [
         0,
@@ -100,6 +182,9 @@ class WindowConfig:
         Config.BOARD_HEIGHT + BORDER_WIDTH,
         PLAYER_STATS_HEIGHT,
     ]
+
+    TRUE_BOARD_WIDTH = Config.BOARD_WIDTH + 2 * BORDER_WIDTH
+    TRUE_BOARD_HEIGHT = sum(OFFSET_ROWS_TO_DRAW_HORIZONTAL) + 1
 
     WINDOW_TITLE: str = "Space Invaders!"
     WINDOW_TITLE_DRAW_POS: Tuple[int, int] = (
@@ -128,42 +213,18 @@ class WindowConfig:
         return WindowConfig.BORDER_WIDTH + x
 
 
-# Logging
-
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-
-formatter = logging.Formatter("[%(asctime)s][%(levelname)s] %(message)s")
-
-file_handler = logging.FileHandler(Config.LOG_PATH)
-file_handler.setLevel(logging.DEBUG)
-file_handler.setFormatter(formatter)
-
-logger.addHandler(file_handler)
-
-
-# Enums
-
-
-class EntityType(enum.Enum):
-    PLAYER = 0
-    ENEMY = 1
-    OBSTACLE = 2
-    BORDER = 3
-
-
-class InputType(enum.Enum):
-    MOVEMENT = 0
-    FIRE = 1
-    QUIT = 2
-    PAUSE = 3
-
-
-# Classes
-
-
 class Entity:
+    """
+    With the exception of text drawn on the screen, all other
+    elements that are drawn on the screen including borders, player, enemies, projectiles, etc
+    are all "Entities".
+
+    This class handles state and movement/updates for any and all entities.
+
+    Border entities do not have an initial position set with the understanding that border entities
+    should never be moved with a canMove*() or move*() method call.
+    """
+
     symbol: str
     color: int
     entity_type: EntityType
@@ -334,35 +395,28 @@ class Entity:
         self.position = (new_y, new_x)
 
 
-"""
-I created an inputmanager class to handle the somewhat confusing behavior of
-curses' input buffer and its interaction with the "tick" mechanism. Since the way
-a game's handles input in a slow tick-rate game is inherently differently from how one
-navigates graphical user interfaces in realtime, this "wrapper" makes interacting with
-curses' getch() a little closer to say using Unity's Input Manager
-
-The following describes the InputManager's behavior.
-
-InputManager:
-    - The input manager functions by defining a series of "groups" of keys.
-      These are currently:
-        - "Movement keys"
-        - "Fire key"
-        - "Quit"
-    - Retrieving the "last pressed key" in a given tick duration (ie, one update() call) is actually "get the last pressed key for group X".
-        - In other words, given one tick duration there can be up to N "most recently pressed keys"
-          where N is the number of input groups defined (3, for now).
-    - If multiple keys are pressed in the duration of one tick, the newest pressed key will be returned
-      for each group.
-        - If a key in the group was not pressed, curses.ERR is returned instead.
-        - Eg, assuming "wasd" are the direction keys and "space" is the fire key:
-          If the keys "wd[space]" are pressed during one tick duration then the "latest pressed key"
-          for the "fire" group would be the spacebar and the key for the "movement" group would be "d" while
-          the "quit" group would return curses.ERR.
-"""
-
-
 class InputManager:
+    """
+    The following describes the InputManager's behavior.
+
+    InputManager:
+        - The input manager functions by defining a series of "groups" of keys.
+          These are currently:
+            - "Movement keys"
+            - "Fire key"
+            - "Quit"
+        - Retrieving the "last pressed key" in a given tick duration (ie, one update() call) is actually "get the last pressed key for group X".
+            - In other words, given one tick duration there can be up to N "most recently pressed keys"
+              where N is the number of input groups defined (3, for now).
+        - If multiple keys are pressed in the duration of one tick, the newest pressed key will be returned
+          for each group.
+            - If a key in the group was not pressed, curses.ERR is returned instead.
+            - Eg, assuming "wasd" are the direction keys and "space" is the fire key:
+              If the keys "wd[space]" are pressed during one tick duration then the "latest pressed key"
+              for the "fire" group would be the spacebar and the key for the "movement" group would be "d" while
+              the "quit" group would return curses.ERR.
+    """
+
     stdscr: curses.window  # type: ignore
 
     """
@@ -432,6 +486,16 @@ class InputManager:
 
 
 class Board:
+    """
+    Handles board state. The board is differentiated from the larger "window" or screen
+    by the fact that Board() only handles the gameplay area of the window.
+
+    As such all coordinates assume game coordinates and NOT the "true" coordinates
+    that curses use in functions like stdscr.getch()
+
+    Translation from game coords to "true" coords is handled with WindowConfig.convertToTrueY() and *TrueX()
+    """
+
     board: List[List[Optional[Entity]]]
 
     # If one imagines the enemies as a line that snakes at the top
@@ -569,25 +633,33 @@ class SpaceInvaders:
     # PLAYER_SYMBOL: str = "♕"
     PLAYER_SYMBOL: str = "ﾑ"
     PLAYER_SYMBOL_FALLBACK: str = "P"
-    PLAYER_COLOR: int = curses.COLOR_RED
+    PLAYER_COLOR: int = Colors.RED
 
     # ENEMY_SYMBOL: str = "☠"
     # ENEMY_SYMBOL: str = "ｪ"
     ENEMY_SYMBOL: str = "◦"
     ENEMY_SYMBOL_FALLBACK: str = "A"
     ENEMY_COLORS: List[int] = [
-        curses.COLOR_GREEN,
-        curses.COLOR_YELLOW,
-        curses.COLOR_BLUE,
-        curses.COLOR_MAGENTA,
+        Colors.GREEN,
+        Colors.YELLOW,
+        Colors.CYAN,
+        Colors.MAGENTA,
     ]
 
     def __init__(self, _stdscr) -> None:
+        """
+        We have to do a weird thing here cuz colors can't be initialized
+        without curses.initscr() being called first.
+        """
+
+        Colors()
+
         self.stdscr = _stdscr
         self.stdscr.keypad(True)
         self.stdscr.nodelay(True)
 
         curses.start_color()
+        curses.use_default_colors()
         curses.noecho()
         curses.cbreak()
         curses.curs_set(False)
@@ -638,12 +710,15 @@ class SpaceInvaders:
         """
 
         def new_tick_start() -> bool:
-            return target_tick_dur_milli < time.time_ns() - curr_tick_start_milli
+            return target_tick_dur_ns < time.time_ns() - curr_tick_start_ns
 
-        target_tick_dur_milli = 60 * 1000 / Config.TICKS_PER_MINUTE
-        curr_tick_start_milli = time.time_ns()
+        target_tick_dur_ns = 60 * 1000 * 1000 * 1000 / Config.TICKS_PER_MINUTE
+        curr_tick_start_ns = time.time_ns()
+        logger.warning(
+            f"target_dur: {target_tick_dur_ns} - curr_tick_start_ns: {curr_tick_start_ns}"
+        )
 
-        min_delay = 0.2  # seconds
+        min_delay = 0.0  # 0.1  # seconds
 
         while True:
             self.inputManager.storeInput()
@@ -652,7 +727,7 @@ class SpaceInvaders:
                 break
 
             if new_tick_start():
-                curr_tick_start_milli = time.time_ns()
+                curr_tick_start_ns = time.time_ns()
 
                 self.update()
                 self.draw()
@@ -707,7 +782,7 @@ class SpaceInvaders:
         for y, row_data in enumerate(self.board.getBoard()):
             for x, entity in enumerate(row_data):
                 if entity is not None:
-                    self.stdscr.addch(y, x, entity.symbol, entity.color)
+                    self.stdscr.addch(y, x, entity.symbol, Colors.getAttr(entity.color))
                 else:
                     self.stdscr.addch(y, x, " ")
 
@@ -721,14 +796,14 @@ class SpaceInvaders:
 
 
 class Borders:
-    VERTICAL = Entity("║", curses.COLOR_WHITE, EntityType.BORDER)
-    HORIZONTAL = Entity("═", curses.COLOR_WHITE, EntityType.BORDER)
-    TOP_LEFT = Entity("╔", curses.COLOR_WHITE, EntityType.BORDER)
-    TOP_RIGHT = Entity("╗", curses.COLOR_WHITE, EntityType.BORDER)
-    BOT_LEFT = Entity("╚", curses.COLOR_WHITE, EntityType.BORDER)
-    BOT_RIGHT = Entity("╝", curses.COLOR_WHITE, EntityType.BORDER)
-    INTERSECT_LEFT = Entity("╠", curses.COLOR_WHITE, EntityType.BORDER)
-    INTERSECT_RIGHT = Entity("╣", curses.COLOR_WHITE, EntityType.BORDER)
+    VERTICAL = Entity("║", Colors.WHITE, EntityType.BORDER)
+    HORIZONTAL = Entity("═", Colors.WHITE, EntityType.BORDER)
+    TOP_LEFT = Entity("╔", Colors.WHITE, EntityType.BORDER)
+    TOP_RIGHT = Entity("╗", Colors.WHITE, EntityType.BORDER)
+    BOT_LEFT = Entity("╚", Colors.WHITE, EntityType.BORDER)
+    BOT_RIGHT = Entity("╝", Colors.WHITE, EntityType.BORDER)
+    INTERSECT_LEFT = Entity("╠", Colors.WHITE, EntityType.BORDER)
+    INTERSECT_RIGHT = Entity("╣", Colors.WHITE, EntityType.BORDER)
 
 
 class Entities:
