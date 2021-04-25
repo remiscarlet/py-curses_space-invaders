@@ -15,7 +15,7 @@ from typing import Optional, List, Dict, Tuple
 
 """
 What Is:
-    - Space Invaders implemented with curses and Python 3.x
+    - Space Invaders implemented with curses and Python 3.7+
 
 What For:
     - Pair Programming Task for applying to the Recurse Center
@@ -27,7 +27,7 @@ Currently Does:
     - Border on game board
     - Quitting ('Q')
     - Pausing ('P')
-    - Player Movement ('A' or 'D')
+    - Player Movement ('A'/'L_ARROW' or 'D'/'R_ARROW')
     - Enemy Movement (Snakes down from top to bot)
     - Title/Pause Text
     - Colors
@@ -40,7 +40,7 @@ Notes/Assumptions:
     - Will error out if screen size is smaller than grid size
     - If screen size is large than grid size, will display the grid anchored to upper left corner.
 
-Known Bugs:
+Known "Bugs":
     - If you hold a key configured with InputManager, initial keypress is recognized, then
       the key is seen as "released", but then will correctly detect it as being "held" again soon thereafter.
         - Wait, this is probably just my OS's key repeat delay and not the code...
@@ -127,7 +127,7 @@ class Colors:
         int, int
     ] = {}  # The value 'int' is a curses attribute which is an int bitmask
 
-    def __init__(self):
+    def __init__(self) -> None:
         curses.init_pair(self.RED, curses.COLOR_RED, curses.COLOR_BLACK)
         Colors.mapping[self.RED] = curses.color_pair(self.RED)
 
@@ -147,7 +147,7 @@ class Colors:
         Colors.mapping[self.WHITE] = curses.color_pair(self.WHITE)
 
     @staticmethod
-    def getAttr(color_id: int):
+    def getAttr(color_id: int) -> None:
         if color_id not in Colors.mapping:
             raise Exception(f"Got a color ID that we haven't mapped! Got: {color_id}")
         return Colors.mapping[color_id]
@@ -175,8 +175,8 @@ class WindowConfig:
         1  # Eh... please don't change this for now. Multi-cell width borders are blegh.
     )
 
-    TITLE_BAR_HEIGHT = 1 + BORDER_WIDTH  # 1 row for title + border width
-    PLAYER_STATS_HEIGHT = 1 + BORDER_WIDTH  # 1 row for all stats + border width
+    TITLE_BAR_HEIGHT: int = 1 + BORDER_WIDTH  # 1 row for title + border width
+    PLAYER_STATS_HEIGHT: int = 1 + BORDER_WIDTH  # 1 row for all stats + border width
 
     OFFSET_ROWS_TO_DRAW_HORIZONTAL: List[int] = [
         0,
@@ -185,8 +185,10 @@ class WindowConfig:
         PLAYER_STATS_HEIGHT,
     ]
 
-    TRUE_BOARD_WIDTH = Config.BOARD_WIDTH + 2 * BORDER_WIDTH
-    TRUE_BOARD_HEIGHT = sum(OFFSET_ROWS_TO_DRAW_HORIZONTAL) + 1
+    TRUE_BOARD_WIDTH: int = Config.BOARD_WIDTH + 2 * BORDER_WIDTH
+    TRUE_BOARD_HEIGHT: int = (
+        sum(OFFSET_ROWS_TO_DRAW_HORIZONTAL) + 1
+    )  # +1 because offset vs array length
 
     WINDOW_TITLE: str = "Space Invaders!"
     WINDOW_TITLE_DRAW_POS: Tuple[int, int] = (
@@ -413,6 +415,17 @@ class Entity:
         self.position = (new_y, new_x)
 
 
+class Borders:
+    VERTICAL = Entity("║", Colors.WHITE, EntityType.BORDER)
+    HORIZONTAL = Entity("═", Colors.WHITE, EntityType.BORDER)
+    TOP_LEFT = Entity("╔", Colors.WHITE, EntityType.BORDER)
+    TOP_RIGHT = Entity("╗", Colors.WHITE, EntityType.BORDER)
+    BOT_LEFT = Entity("╚", Colors.WHITE, EntityType.BORDER)
+    BOT_RIGHT = Entity("╝", Colors.WHITE, EntityType.BORDER)
+    INTERSECT_LEFT = Entity("╠", Colors.WHITE, EntityType.BORDER)
+    INTERSECT_RIGHT = Entity("╣", Colors.WHITE, EntityType.BORDER)
+
+
 class InputManager:
     """
     The following describes the InputManager's behavior.
@@ -463,14 +476,14 @@ class InputManager:
 
     reverse_group_lookup: Dict[int, InputType] = {}
 
-    def __init__(self, stdscr):
+    def __init__(self, stdscr: curses.window) -> None:  # type: ignore
         self.stdscr = stdscr
 
         for input_type, keys in self.groups.items():
             for key in keys:
                 self.reverse_group_lookup[key] = input_type
 
-    def shouldQuit(self):
+    def shouldQuit(self) -> bool:
         last_pressed_key_for_quit = self.getLastPressedKeyForGroup(
             InputType.QUIT, False
         )
@@ -535,12 +548,14 @@ class Board:
 
         assert WindowConfig.BORDER_WIDTH == 1  # Pls no multi-width borders...
 
-        rows_to_draw = WindowConfig.getRowsToDrawHorizontals()
+        rows_to_draw: List[int] = WindowConfig.getRowsToDrawHorizontals()
 
         # Non-corner Vertical borders
         right_border_x = WindowConfig.TRUE_BOARD_WIDTH - 1
         for y in range(1, WindowConfig.TRUE_BOARD_HEIGHT - 1):
-            if y in rows_to_draw[1:-1]:  # Bounds check?
+            if (
+                y in rows_to_draw[1:-1]
+            ):  # Bounds check? 0th and last rows use corner chars - not intersections
                 # Draw an intersection
                 board[y][0] = Borders.INTERSECT_LEFT
                 board[y][right_border_x] = Borders.INTERSECT_RIGHT
@@ -636,6 +651,12 @@ class Board:
 
 
 class SpaceInvaders:
+    """
+    Main game controller.
+
+    Handles game loop, updating game entities, and drawing everything with curses.
+    """
+
     stdscr: curses.window  # type: ignore
 
     player: Entity
@@ -664,7 +685,7 @@ class SpaceInvaders:
         Colors.MAGENTA,
     ]
 
-    def __init__(self, _stdscr) -> None:
+    def __init__(self, _stdscr: curses.window) -> None:  # type: ignore
         """
         We have to do a weird thing here cuz colors can't be initialized
         without curses.initscr() being called first.
@@ -800,7 +821,7 @@ class SpaceInvaders:
                 else:
                     self.stdscr.addch(y, x, " ")
 
-    def drawPauseScreen(self):
+    def drawPauseScreen(self) -> None:
         text_y, text_x = WindowConfig.PAUSED_TEXT_DRAW_POS
         self.stdscr.addstr(text_y, text_x, WindowConfig.PAUSED_TEXT)
 
@@ -809,17 +830,6 @@ class SpaceInvaders:
         self.stdscr.addstr(title_y, title_x, WindowConfig.WINDOW_TITLE)
 
         # TODO: Implement score and draw score here.
-
-
-class Borders:
-    VERTICAL = Entity("║", Colors.WHITE, EntityType.BORDER)
-    HORIZONTAL = Entity("═", Colors.WHITE, EntityType.BORDER)
-    TOP_LEFT = Entity("╔", Colors.WHITE, EntityType.BORDER)
-    TOP_RIGHT = Entity("╗", Colors.WHITE, EntityType.BORDER)
-    BOT_LEFT = Entity("╚", Colors.WHITE, EntityType.BORDER)
-    BOT_RIGHT = Entity("╝", Colors.WHITE, EntityType.BORDER)
-    INTERSECT_LEFT = Entity("╠", Colors.WHITE, EntityType.BORDER)
-    INTERSECT_RIGHT = Entity("╣", Colors.WHITE, EntityType.BORDER)
 
 
 class Entities:
@@ -838,7 +848,7 @@ class Entities:
 ###############
 
 
-def main(stdscr):
+def main(stdscr: curses.window) -> None:  # type: ignore
     game = SpaceInvaders(stdscr)
     game.run()
     del game
