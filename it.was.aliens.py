@@ -57,9 +57,9 @@ class Config:
     BOARD_WIDTH: int = 25
     ENEMY_COUNT: int = BOARD_WIDTH * 2
     ENEMY_SPACING: int = 2
-    TICKS_PER_MINUTE: int = 360
+    TICKS_PER_SECOND: int = 30
 
-    TICKS_PER_ENEMY_MOVEMENT = 3
+    TICKS_PER_ENEMY_MOVEMENT = 10
 
     LOG_PATH = "it.was.aliens.log"
 
@@ -712,13 +712,11 @@ class SpaceInvaders:
         def new_tick_start() -> bool:
             return target_tick_dur_ns < time.time_ns() - curr_tick_start_ns
 
-        target_tick_dur_ns = 60 * 1000 * 1000 * 1000 / Config.TICKS_PER_MINUTE
+        target_tick_dur_ns = 1 * 1000 * 1000 * 1000 / Config.TICKS_PER_SECOND
         curr_tick_start_ns = time.time_ns()
         logger.warning(
             f"target_dur: {target_tick_dur_ns} - curr_tick_start_ns: {curr_tick_start_ns}"
         )
-
-        min_delay = 0.0  # 0.1  # seconds
 
         while True:
             self.inputManager.storeInput()
@@ -731,8 +729,6 @@ class SpaceInvaders:
 
                 self.update()
                 self.draw()
-
-            time.sleep(min_delay)
 
     def updatePlayer(self, pressed_key: int) -> None:
         if pressed_key in (curses.KEY_LEFT, ord("a")) and self.player.canMoveLeft():
