@@ -184,6 +184,9 @@ class SpaceInvaders:
         elif pressed_key in (curses.KEY_RIGHT, ord("d")) and self.player.canMoveRight():
             Logger.info("Moving ship to the right")
             self.player.moveRight(self.board)
+        elif pressed_key == ord(" "):
+            # TODO: Implement player shooting here
+            pass
 
     def updateEnemies(self) -> None:
         for enemy in reversed(self.board.getAliveEnemies()):

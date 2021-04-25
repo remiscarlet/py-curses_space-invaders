@@ -59,7 +59,9 @@ class WindowConfig:
     @staticmethod
     def getRowsToDrawHorizontals() -> List[int]:
         rows = list(itertools.accumulate(WindowConfig.OFFSET_ROWS_TO_DRAW_HORIZONTAL))
-        assert rows[-1] == WindowConfig.TRUE_BOARD_HEIGHT - 1
+        assert (
+            rows[-1] == WindowConfig.TRUE_BOARD_HEIGHT - 1
+        )  # Ensure our offsets and true board height match.
         return rows
 
     @staticmethod

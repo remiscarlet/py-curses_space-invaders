@@ -18,6 +18,7 @@ class InputManager:
             - "Movement keys"
             - "Fire key"
             - "Quit"
+            - "Pause"
         - Retrieving the "last pressed key" in a given tick duration (ie, one update() call) is actually "get the last pressed key for group X".
             - In other words, given one tick duration there can be up to N "most recently pressed keys"
               where N is the number of input groups defined (3, for now).

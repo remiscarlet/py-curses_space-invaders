@@ -4,6 +4,8 @@ from __future__ import annotations
 from typing import Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
+    # We only need to import Board for type checking purposes as we only use it
+    # for type hinting in func signatures
     from Board import Board
 
 from Config import Config
@@ -84,7 +86,7 @@ class Entity:
         Assumes the correct "next pos" is open and valid to move to.
 
         The `depth` arg is "how many steps ahead do you want", ie can get
-        the pos for
+        the offset for not just "next pos" but multiple positions ahead.
         """
 
         self.__log(f"Generating next deltas from pos: {curr_y},{curr_x}")
