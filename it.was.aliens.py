@@ -57,9 +57,9 @@ class Config:
     BOARD_WIDTH: int = 25
     ENEMY_COUNT: int = BOARD_WIDTH * 2
     ENEMY_SPACING: int = 2
-    TICKS_PER_SECOND: int = 30
+    TICKS_PER_SECOND: int = 10
 
-    TICKS_PER_ENEMY_MOVEMENT = 10
+    TICKS_PER_ENEMY_MOVEMENT = 3
 
     LOG_PATH = "it.was.aliens.log"
 
@@ -89,9 +89,11 @@ logger.addHandler(file_handler)
 
 class EntityType(enum.Enum):
     PLAYER = 0
-    ENEMY = 1
-    OBSTACLE = 2
-    BORDER = 3
+    PLAYER_PROJECTILE = 1
+    ENEMY = 2
+    ENEMY_PROJECTILE = 3
+    OBSTACLE = 4
+    BORDER = 5
 
 
 class InputType(enum.Enum):
@@ -267,6 +269,20 @@ class Entity:
     def genNextPosOffset(
         self, curr_y: int, curr_x: int, depth: int = 1
     ) -> Tuple[int, int]:
+        if self.entity_type == EntityType.PLAYER_PROJECTILE:
+            return (-1, 0)
+        elif self.entity_type == EntityType.ENEMY_PROJECTILE:
+            return (+1, 0)
+        elif self.entity_type in (EntityType.PLAYER, EntityType.ENEMY):
+            return self.genNextPosOffsetForNonProjectile(curr_y, curr_x, depth)
+        else:
+            raise Exception(
+                f"Tried to get the next position of an entity that does not move! Self: {self}"
+            )
+
+    def genNextPosOffsetForNonProjectile(
+        self, curr_y: int, curr_x: int, depth: int = 1
+    ) -> Tuple[int, int]:
         """
         Assumes the correct "next pos" is open and valid to move to.
 
@@ -314,7 +330,9 @@ class Entity:
             dy, dx = self.genNextPosOffset(old_y, old_x)
             new_y, new_x = old_y + dy, old_x + dx
 
-            if board.isPosOccupied(new_y, new_x):
+            entity = board.getEntityAtPos(new_y, new_x)
+            if entity != None:
+                # TODO: Implement hit detection. Maybe here.
                 raise Exception(
                     f"Tried moving entity but next pos was occupied! New pos: {new_y},{new_x}"
                 )
@@ -790,6 +808,8 @@ class SpaceInvaders:
         title_y, title_x = WindowConfig.WINDOW_TITLE_DRAW_POS
         self.stdscr.addstr(title_y, title_x, WindowConfig.WINDOW_TITLE)
 
+        # TODO: Implement score and draw score here.
+
 
 class Borders:
     VERTICAL = Entity("║", Colors.WHITE, EntityType.BORDER)
@@ -803,6 +823,7 @@ class Borders:
 
 
 class Entities:
+    # TODO: Implement player and enemy projectiles.
     PLAYER: Entity = Entity(
         SpaceInvaders.PLAYER_SYMBOL, SpaceInvaders.PLAYER_COLOR, EntityType.PLAYER
     )
