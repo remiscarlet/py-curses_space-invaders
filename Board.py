@@ -4,10 +4,16 @@ from __future__ import annotations
 import copy
 import random
 
-from typing import List, Optional
+from typing import List, Optional, Tuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    # We only need to import Board for type checking purposes as we only use it
+    # for type hinting in func signatures
+    from SpaceInvaders import SpaceInvaders
 
 from Config import Config
 from Entity import Entity
+from Entities import Entities
 from WindowConfig import WindowConfig
 from Logger import Logger
 from Borders import Borders
@@ -30,9 +36,22 @@ class Board:
     # of the screen, enemies_alive is ordered FILO
     enemies_alive: List[Entity] = []
 
-    def __init__(self, player: Entity, enemies: List[Entity], num_enemies: int) -> None:
+    player_projectiles: List[Entity] = []
+    enemy_projectiles: List[Entity] = []
+
+    def __init__(
+        self,
+        player: Entity,
+        enemies: List[Entity],
+        num_enemies: int,
+        space_invaders: "SpaceInvaders",
+    ) -> None:
         self.__initializeBoard()
         self.__populateBoard(player, enemies, num_enemies)
+        self.space_invaders = space_invaders
+
+    def incrementScore(self) -> None:
+        self.space_invaders.incrementScore()
 
     def __initializeBoard(self) -> None:
         """
@@ -109,11 +128,38 @@ class Board:
 
         Logger.info("===== Done populating initial entity positions.")
 
+    def spawnProjectile(
+        self, entity_pos: Tuple[int, int], is_player_projectile: bool
+    ) -> None:
+        if is_player_projectile:
+            offset_y, offset_x = (-1, 0)
+        else:
+            offset_y, offset_x = (+1, 0)
+        entity_y, entity_x = entity_pos
+
+        proj_y, proj_x = entity_y + offset_y, entity_x + offset_x
+
+        projectile = copy.deepcopy(Entities.PLAYER_PROJECTILE)
+
+        self.setEntityAtPos(proj_y, proj_x, projectile)
+        projectile.setInitialPosition(proj_y, proj_x)
+
+        if is_player_projectile:
+            self.player_projectiles.append(projectile)
+        else:
+            self.enemy_projectiles.append(projectile)
+
     def getBoard(self) -> List[List[Optional[Entity]]]:
         return self.board
 
     def getAliveEnemies(self) -> List[Entity]:
         return self.enemies_alive
+
+    def getPlayerProjectiles(self) -> List[Entity]:
+        return self.player_projectiles
+
+    def getEnemyProjectiles(self) -> List[Entity]:
+        return self.enemy_projectiles
 
     def getEntityAtPos(self, y: int, x: int) -> Optional[Entity]:
         """

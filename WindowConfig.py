@@ -56,6 +56,12 @@ class WindowConfig:
         TRUE_BOARD_WIDTH // 2 - len(PAUSED_TEXT) // 2,
     )
 
+    SCORE_TEXT: str = "Score: "
+    SCORE_TEXT_DRAW_POS: Tuple[int, int] = (
+        BORDER_WIDTH + TITLE_BAR_HEIGHT + Config.BOARD_HEIGHT + BORDER_WIDTH,
+        BORDER_WIDTH + 1,
+    )
+
     @staticmethod
     def getRowsToDrawHorizontals() -> List[int]:
         rows = list(itertools.accumulate(WindowConfig.OFFSET_ROWS_TO_DRAW_HORIZONTAL))

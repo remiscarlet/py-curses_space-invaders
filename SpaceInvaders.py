@@ -19,6 +19,7 @@ from Colors import Colors
 from WindowConfig import WindowConfig
 from Board import Board
 from Entity import Entity
+from Entities import Entities
 from EntityType import EntityType
 from InputManager import InputManager
 from InputType import InputType
@@ -69,31 +70,13 @@ class SpaceInvaders:
 
     stdscr: curses.window  # type: ignore
 
+    score: int = 0
     player: Entity
     enemies: List[Entity]
 
     player_pos: Tuple[int, int]
 
     is_paused: bool = False
-
-    SHOOT_TICK: int = 1  # Number of ticks for "bullet" to travel forward one cell
-    SHOOT_DELAY: int = 2  # Can shoot once every SHOOT_DELAY ticks.
-
-    # PLAYER_SYMBOL: str = "♕"
-    PLAYER_SYMBOL: str = "ﾑ"
-    PLAYER_SYMBOL_FALLBACK: str = "P"
-    PLAYER_COLOR: int = Colors.RED
-
-    # ENEMY_SYMBOL: str = "☠"
-    # ENEMY_SYMBOL: str = "ｪ"
-    ENEMY_SYMBOL: str = "◦"
-    ENEMY_SYMBOL_FALLBACK: str = "A"
-    ENEMY_COLORS: List[int] = [
-        Colors.GREEN,
-        Colors.YELLOW,
-        Colors.CYAN,
-        Colors.MAGENTA,
-    ]
 
     def __init__(self, _stdscr: curses.window) -> None:  # type: ignore
         """
@@ -118,7 +101,7 @@ class SpaceInvaders:
         self.ensureScreenLargeEnough()
         self.initializeEntities()
 
-        self.board = Board(self.player, self.enemies, Config.ENEMY_COUNT)
+        self.board = Board(self.player, self.enemies, Config.ENEMY_COUNT, self)
 
     def __del__(self) -> None:
         self.stdscr.keypad(False)
@@ -127,6 +110,9 @@ class SpaceInvaders:
         curses.echo()
         curses.endwin()
         curses.curs_set(True)
+
+    def incrementScore(self) -> None:
+        self.score += 100
 
     def ensureScreenLargeEnough(self) -> None:
         """
@@ -185,12 +171,18 @@ class SpaceInvaders:
             Logger.info("Moving ship to the right")
             self.player.moveRight(self.board)
         elif pressed_key == ord(" "):
-            # TODO: Implement player shooting here
-            pass
+            Logger.info("Pew pew")
+            self.player.spawnProjectile(self.board)
 
     def updateEnemies(self) -> None:
         for enemy in reversed(self.board.getAliveEnemies()):
             enemy.moveToNextPos(self.board)
+
+    def updateProjectiles(self) -> None:
+        for proj in self.board.getPlayerProjectiles():
+            proj.moveUp(self.board)
+        for proj in self.board.getEnemyProjectiles():
+            proj.moveDown(self.board)
 
     def togglePause(self) -> None:
         self.is_paused = not self.is_paused
@@ -213,6 +205,7 @@ class SpaceInvaders:
 
         if not self.is_paused:
             self.updateEnemies()
+            self.updateProjectiles()
 
     def draw(self) -> None:
         if not self.is_paused:
@@ -242,16 +235,9 @@ class SpaceInvaders:
 
         # TODO: Implement score and draw score here.
 
-
-class Entities:
-    # TODO: Implement player and enemy projectiles.
-    PLAYER: Entity = Entity(
-        SpaceInvaders.PLAYER_SYMBOL, SpaceInvaders.PLAYER_COLOR, EntityType.PLAYER
-    )
-    ENEMIES: List[Entity] = [
-        Entity(SpaceInvaders.ENEMY_SYMBOL, color, EntityType.ENEMY)
-        for color in SpaceInvaders.ENEMY_COLORS
-    ]
+        score_y, score_x = WindowConfig.SCORE_TEXT_DRAW_POS
+        score_text = f"{WindowConfig.SCORE_TEXT}{self.score}"
+        self.stdscr.addstr(score_y, score_x, score_text)
 
 
 ###############

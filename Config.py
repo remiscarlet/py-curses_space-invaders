@@ -4,6 +4,10 @@
 # Configs #
 ###########
 
+from Colors import Colors
+
+from typing import List
+
 
 class Config:
     BOARD_HEIGHT: int = 15
@@ -15,3 +19,22 @@ class Config:
     TICKS_PER_ENEMY_MOVEMENT: int = 3
 
     LOG_PATH: str = "it.was.aliens.log"
+
+    SHOOT_TICK: int = 1  # Number of ticks for "bullet" to travel forward one cell
+    SHOOT_DELAY: int = 2  # Can shoot once every SHOOT_DELAY ticks.
+
+    # PLAYER_SYMBOL: str = "♕"
+    PLAYER_SYMBOL: str = "ﾑ"
+    PLAYER_SYMBOL_FALLBACK: str = "P"
+    PLAYER_COLOR: int = Colors.RED
+
+    # ENEMY_SYMBOL: str = "☠"
+    # ENEMY_SYMBOL: str = "ｪ"
+    ENEMY_SYMBOL: str = "◦"
+    ENEMY_SYMBOL_FALLBACK: str = "A"
+    ENEMY_COLORS: List[int] = [
+        Colors.GREEN,
+        Colors.YELLOW,
+        Colors.CYAN,
+        Colors.MAGENTA,
+    ]

@@ -36,7 +36,12 @@ class Entity:
 
     ticks_since_last_move: int = 0
 
-    def __init__(self, symbol: str, color: int, entity_type: EntityType) -> None:
+    def __init__(
+        self,
+        symbol: str,
+        color: int,
+        entity_type: EntityType,
+    ) -> None:
         self.symbol = symbol
         self.color = color
         self.entity_type = entity_type
@@ -129,13 +134,6 @@ class Entity:
             dy, dx = self.genNextPosOffset(old_y, old_x)
             new_y, new_x = old_y + dy, old_x + dx
 
-            entity = board.getEntityAtPos(new_y, new_x)
-            if entity != None:
-                # TODO: Implement hit detection. Maybe here.
-                raise Exception(
-                    f"Tried moving entity but next pos was occupied! New pos: {new_y},{new_x}"
-                )
-
             self.__move(board, dy, dx)
             self.ticks_since_last_move = 0
 
@@ -153,6 +151,10 @@ class Entity:
         return (
             x < 0 or x > Config.BOARD_WIDTH - 1 or y < 0 or y > Config.BOARD_HEIGHT - 1
         )
+
+    def spawnProjectile(self, board: "Board") -> None:
+        is_player = self.entity_type == EntityType.PLAYER
+        board.spawnProjectile(self.position, is_player)
 
     """
     All move* methods will error out if the destination
@@ -198,11 +200,21 @@ class Entity:
         new_y, new_x = (old_y + dy, old_x + dx)
 
         if self.__isOutOfBounds(new_y, new_x):
-            raise Exception("Entity is being moved out of bounds!")
+            if self.__isProjectile():
+                self.__destroy(board)
+                return
+            else:
+                raise Exception("Entity is being moved out of bounds!")
 
-        if board.isPosOccupied(new_y, new_x):
-            self.__log(f"{board.getEntityAtPos(new_y, new_x)}")
-            raise Exception("Destination cell is already occupied!")
+        entity = board.getEntityAtPos(new_y, new_x)
+        if entity is not None:
+            # TODO: "Race condition" on behavior if projectile/non-projectile are "swapping" cells in a given update
+            # depending on if the entity moving out of the cell gets updated first or if the entity moving into cell is updated first.
+            if self.__isProjectile() or entity.__isProjectile():
+                self.__handleProjectileCollision(board, entity)
+            else:
+                self.__log(f"{board.getEntityAtPos(new_y, new_x)}")
+                raise Exception("Destination cell is already occupied!")
 
         self.__log(f"Moved from old pos {old_y},{old_x} to new pos {new_y},{new_x}")
 
@@ -210,3 +222,27 @@ class Entity:
         board.setEntityAtPos(new_y, new_x, self)
 
         self.position = (new_y, new_x)
+
+    def __isProjectile(self) -> bool:
+        return self.entity_type in (
+            EntityType.PLAYER_PROJECTILE,
+            EntityType.ENEMY_PROJECTILE,
+        )
+
+    def __handleProjectileCollision(self, board: "Board", other: Entity) -> None:
+        if not self.__isProjectile():
+            # TODO: Handle later? Just ignore? For now only handle cases where the "self" entity is the projectile.
+            return
+
+        self.__destroy(board)
+        other.__destroy(board)
+
+        board.incrementScore()
+
+    def __destroy(self, board: "Board") -> None:
+        self_y, self_x = self.position
+        board.setEntityAtPos(self_y, self_x, None)
+
+        if self.entity_type == EntityType.ENEMY:
+            idx = board.enemies_alive.index(self)
+            board.enemies_alive.pop(idx)
