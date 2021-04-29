@@ -20,8 +20,7 @@ class Config:
 
     LOG_PATH: str = "it.was.aliens.log"
 
-    SHOOT_TICK: int = 1  # Number of ticks for "bullet" to travel forward one cell
-    SHOOT_DELAY: int = 2  # Can shoot once every SHOOT_DELAY ticks.
+    TICKS_PER_SHOT: int = 0
 
     # PLAYER_SYMBOL: str = "♕"
     PLAYER_SYMBOL: str = "ﾑ"

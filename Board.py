@@ -4,7 +4,7 @@ from __future__ import annotations
 import copy
 import random
 
-from typing import List, Optional, Tuple, TYPE_CHECKING
+from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
     # We only need to import Board for type checking purposes as we only use it
@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
 from Config import Config
 from Entity import Entity
+from EntityType import EntityType
 from Entities import Entities
 from WindowConfig import WindowConfig
 from Logger import Logger
@@ -32,12 +33,8 @@ class Board:
 
     board: List[List[Optional[Entity]]]
 
-    # If one imagines the enemies as a line that snakes at the top
-    # of the screen, enemies_alive is ordered FILO
-    enemies_alive: List[Entity] = []
-
-    player_projectiles: List[Entity] = []
-    enemy_projectiles: List[Entity] = []
+    instances: Dict[EntityType, List[Entity]] = {}
+    buffered_destroys: Dict[EntityType, List[Entity]] = {}
 
     def __init__(
         self,
@@ -46,12 +43,31 @@ class Board:
         num_enemies: int,
         space_invaders: "SpaceInvaders",
     ) -> None:
+        for entity_type in EntityType:
+            Logger.info(entity_type)
+            self.instances[entity_type] = []
+            self.buffered_destroys[entity_type] = []
+
         self.__initializeBoard()
         self.__populateBoard(player, enemies, num_enemies)
         self.space_invaders = space_invaders
 
     def incrementScore(self) -> None:
         self.space_invaders.incrementScore()
+
+    def bufferDestroy(self, entity: Entity) -> None:
+        entity_type = entity.entity_type
+        self.buffered_destroys[entity_type].append(entity)
+
+    def deleteBufferedDestroys(self) -> None:
+        for entity_type in self.buffered_destroys.keys():
+            while len(self.buffered_destroys[entity_type]) > 0:
+                for i, entity in enumerate(self.buffered_destroys[entity_type]):
+                    Logger.info(f"Attempting to delete: [{i}][{entity_type}]{entity}")
+                self.instances[entity_type].pop(0)
+                self.buffered_destroys[entity_type].pop(0)
+
+            Logger.info(f"{entity_type}: {self.buffered_destroys[entity_type]}")
 
     def __initializeBoard(self) -> None:
         """
@@ -109,7 +125,6 @@ class Board:
         player_y = Config.BOARD_HEIGHT - 1
         player_x = Config.BOARD_WIDTH // 2
         self.setEntityAtPos(player_y, player_x, player)
-        player.setInitialPosition(player_y, player_x)
 
         enemy_y, enemy_x = 0, 0
         for i in range(num_enemies):
@@ -118,13 +133,12 @@ class Board:
             )  # Deep copy to ensure no shared refs
 
             self.setEntityAtPos(enemy_y, enemy_x, enemy)
-            enemy.setInitialPosition(enemy_y, enemy_x)
 
             dy, dx = enemy.genNextPosOffset(enemy_y, enemy_x, Config.ENEMY_SPACING)
             enemy_y += dy
             enemy_x += dx
 
-            self.enemies_alive.append(enemy)
+            self.instances[EntityType.ENEMY].append(enemy)
 
         Logger.info("===== Done populating initial entity positions.")
 
@@ -136,30 +150,32 @@ class Board:
         else:
             offset_y, offset_x = (+1, 0)
         entity_y, entity_x = entity_pos
-
         proj_y, proj_x = entity_y + offset_y, entity_x + offset_x
 
-        projectile = copy.deepcopy(Entities.PLAYER_PROJECTILE)
-
+        projectile = Entities.genNewPlayerProjectile()
         self.setEntityAtPos(proj_y, proj_x, projectile)
-        projectile.setInitialPosition(proj_y, proj_x)
 
-        if is_player_projectile:
-            self.player_projectiles.append(projectile)
-        else:
-            self.enemy_projectiles.append(projectile)
+        entity_type = (
+            EntityType.PLAYER_PROJECTILE
+            if is_player_projectile
+            else EntityType.ENEMY_PROJECTILE
+        )
+        self.instances[entity_type].append(projectile)
+        Logger.info(
+            f"Spawning projectile: {projectile} - is_player: {is_player_projectile}"
+        )
 
     def getBoard(self) -> List[List[Optional[Entity]]]:
         return self.board
 
     def getAliveEnemies(self) -> List[Entity]:
-        return self.enemies_alive
+        return self.instances[EntityType.ENEMY]
 
     def getPlayerProjectiles(self) -> List[Entity]:
-        return self.player_projectiles
+        return self.instances[EntityType.PLAYER_PROJECTILE]
 
     def getEnemyProjectiles(self) -> List[Entity]:
-        return self.enemy_projectiles
+        return self.instances[EntityType.ENEMY_PROJECTILE]
 
     def getEntityAtPos(self, y: int, x: int) -> Optional[Entity]:
         """
@@ -191,3 +207,6 @@ class Board:
         assert true_y > 0 and true_y < WindowConfig.TRUE_BOARD_HEIGHT - 1
 
         self.board[true_y][true_x] = entity
+        if entity is not None:
+            # Note: Not true y/x but rather the board y,x
+            entity.setInitialPosition(y, x)

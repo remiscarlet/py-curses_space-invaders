@@ -9,9 +9,10 @@ from typing import List
 
 
 class Entities:
-    PLAYER_PROJECTILE: Entity = Entity(
-        "|", Config.PLAYER_COLOR, EntityType.PLAYER_PROJECTILE
-    )
+    @staticmethod
+    def genNewPlayerProjectile():
+        return Entity("|", Config.PLAYER_COLOR, EntityType.PLAYER_PROJECTILE)
+
     # TODO: Implement player and enemy projectiles.
     PLAYER: Entity = Entity(
         Config.PLAYER_SYMBOL, Config.PLAYER_COLOR, EntityType.PLAYER

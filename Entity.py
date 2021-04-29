@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import time
 from typing import Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -30,11 +31,14 @@ class Entity:
     color: int
     entity_type: EntityType
 
+    _id: int
+
     sizes: WindowConfig
 
     position: Tuple[int, int]  # y,x as per curses format
 
     ticks_since_last_move: int = 0
+    ticks_since_last_shot: int = 0
 
     def __init__(
         self,
@@ -46,11 +50,16 @@ class Entity:
         self.color = color
         self.entity_type = entity_type
 
+        self._id = time.time_ns()
+
     def __str__(self) -> str:
         try:
             return f"{EntityType(self.entity_type).name}-{self.symbol}-{self.position}"
         except AttributeError:
             return f"{EntityType(self.entity_type).name}-{self.symbol}-NoPos"
+
+    def __eq__(self, other) -> bool:
+        return self._id == other._id
 
     def __log(self, msg: str) -> None:
         Logger.debug(f"{self}: {msg}")
@@ -153,8 +162,13 @@ class Entity:
         )
 
     def spawnProjectile(self, board: "Board") -> None:
-        is_player = self.entity_type == EntityType.PLAYER
-        board.spawnProjectile(self.position, is_player)
+        if self.ticks_since_last_shot > Config.TICKS_PER_SHOT:
+            is_player = self.entity_type == EntityType.PLAYER
+
+            board.spawnProjectile(self.position, is_player)
+            self.ticks_since_last_shot = 0
+
+        self.ticks_since_last_shot += 1
 
     """
     All move* methods will error out if the destination
@@ -211,7 +225,14 @@ class Entity:
             # TODO: "Race condition" on behavior if projectile/non-projectile are "swapping" cells in a given update
             # depending on if the entity moving out of the cell gets updated first or if the entity moving into cell is updated first.
             if self.__isProjectile() or entity.__isProjectile():
+                if self.__isProjectile() and entity.__isProjectile():
+                    Logger.info(f"Proj1: {self}")
+                    Logger.info(f"Proj2: {entity}")
+                    raise Exception(
+                        "Bullet on bullet collision?"
+                    )  # For now workaround by delaying shooting to once every other tick
                 self.__handleProjectileCollision(board, entity)
+                return
             else:
                 self.__log(f"{board.getEntityAtPos(new_y, new_x)}")
                 raise Exception("Destination cell is already occupied!")
@@ -230,19 +251,15 @@ class Entity:
         )
 
     def __handleProjectileCollision(self, board: "Board", other: Entity) -> None:
-        if not self.__isProjectile():
-            # TODO: Handle later? Just ignore? For now only handle cases where the "self" entity is the projectile.
-            return
-
         self.__destroy(board)
         other.__destroy(board)
 
         board.incrementScore()
 
     def __destroy(self, board: "Board") -> None:
+        Logger.info(f"Destroying: {self}")
         self_y, self_x = self.position
         board.setEntityAtPos(self_y, self_x, None)
 
-        if self.entity_type == EntityType.ENEMY:
-            idx = board.enemies_alive.index(self)
-            board.enemies_alive.pop(idx)
+        if self.entity_type in (EntityType.ENEMY, EntityType.PLAYER_PROJECTILE):
+            board.bufferDestroy(self)

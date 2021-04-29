@@ -158,6 +158,9 @@ class SpaceInvaders:
                 break
 
             if new_tick_start():
+                Logger.info("=======TICK START=======")
+                for projectile in self.board.getPlayerProjectiles():
+                    Logger.info(f"PROJ: {projectile}")
                 curr_tick_start_ns = time.time_ns()
 
                 self.update()
@@ -178,8 +181,15 @@ class SpaceInvaders:
         for enemy in reversed(self.board.getAliveEnemies()):
             enemy.moveToNextPos(self.board)
 
+    def deleteBufferedDestroys(self) -> None:
+        Logger.info("Deleting buffered destroys")
+        self.board.deleteBufferedDestroys()
+
     def updateProjectiles(self) -> None:
         for proj in self.board.getPlayerProjectiles():
+            Logger.info(f"Updating: {proj}")
+        for proj in self.board.getPlayerProjectiles():
+            Logger.info(f"Moving projectile {proj} up")
             proj.moveUp(self.board)
         for proj in self.board.getEnemyProjectiles():
             proj.moveDown(self.board)
@@ -204,8 +214,9 @@ class SpaceInvaders:
                 self.updatePlayer(pressed_key)
 
         if not self.is_paused:
-            self.updateEnemies()
             self.updateProjectiles()
+            self.updateEnemies()
+            self.deleteBufferedDestroys()
 
     def draw(self) -> None:
         if not self.is_paused:
@@ -232,8 +243,6 @@ class SpaceInvaders:
     def drawText(self) -> None:
         title_y, title_x = WindowConfig.WINDOW_TITLE_DRAW_POS
         self.stdscr.addstr(title_y, title_x, WindowConfig.WINDOW_TITLE)
-
-        # TODO: Implement score and draw score here.
 
         score_y, score_x = WindowConfig.SCORE_TEXT_DRAW_POS
         score_text = f"{WindowConfig.SCORE_TEXT}{self.score}"
