@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import time
-import hashlib
+import uuid
 from typing import Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -36,7 +36,7 @@ class Entity:
     color: int
     entity_type: EntityType
 
-    _id: str
+    _id: int
 
     sizes: WindowConfig
 
@@ -54,15 +54,17 @@ class Entity:
         self.symbol = symbol
         self.color = color
         self.entity_type = entity_type
+        self._id = uuid.uuid4().int
 
-        md5 = hashlib.md5(bytearray(str(time.time()), "utf-8"))
-        self._id = md5.hexdigest()
+    def reInitializeId(self) -> None:
+        self._id = uuid.uuid4().int
+        Logger.info(f"INITIALIZED NEW ENTITY: {self._id} - {self}")
 
     def __repr__(self) -> str:
         try:
-            return f"{EntityType(self.entity_type).name}-{self.symbol}-{self.position}-{self._id[:8]}"
+            return f"{EntityType(self.entity_type).name}-{self.symbol}-{self.position}-{str(self._id)[:8]}"
         except AttributeError:
-            return f"{EntityType(self.entity_type).name}-{self.symbol}-NoPos-{self._id[:8]}"
+            return f"{EntityType(self.entity_type).name}-{self.symbol}-NoPos-{str(self._id)[:8]}"
 
     def __eq__(self, other) -> bool:
         return self._id == other._id

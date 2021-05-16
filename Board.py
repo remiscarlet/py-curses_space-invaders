@@ -153,6 +153,7 @@ class Board:
             enemy = copy.deepcopy(
                 random.choice(enemies)
             )  # Deep copy to ensure no shared refs
+            enemy.reInitializeId()
 
             self.setEntityAtPos(enemy_y, enemy_x, enemy, use_curr_board=True)
 
