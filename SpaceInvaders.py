@@ -77,6 +77,8 @@ class SpaceInvaders:
     player_pos: Tuple[int, int]
 
     is_paused: bool = False
+    is_won: bool = False
+    is_lost: bool = False
 
     def __init__(self, _stdscr: curses.window) -> None:  # type: ignore
         """
@@ -148,12 +150,12 @@ class SpaceInvaders:
         target_tick_dur_ns = 1 * 1000 * 1000 * 1000 / Config.TICKS_PER_SECOND
         curr_tick_start_ns = time.time_ns()
 
-        # def new_tick_start() -> bool:
         new_tick_start = (
             lambda: target_tick_dur_ns < time.time_ns() - curr_tick_start_ns
         )
 
         while True:
+            self.checkIfWin()
             self.inputManager.storeInput()
 
             if self.inputManager.shouldQuit():
@@ -162,11 +164,14 @@ class SpaceInvaders:
             if new_tick_start():
                 Logger.info("=======TICK START=======")
                 for projectile in self.board.getPlayerProjectiles():
-                    Logger.info(f"PROJ: {projectile}")
+                    Logger.debug(f"PROJ: {projectile}")
                 curr_tick_start_ns = time.time_ns()
 
                 self.update()
                 self.draw()
+
+    def checkIfWin(self):
+        self.is_won = len(self.board.getAliveEnemies()) == 0
 
     def updatePlayer(self, pressed_key: int) -> bool:
         """
@@ -177,15 +182,15 @@ class SpaceInvaders:
         pos_updated: bool = False
 
         if pressed_key in (curses.KEY_LEFT, ord("a")) and self.player.canMoveLeft():
-            Logger.info("Moving ship to the left")
+            Logger.debug("Moving ship to the left")
             self.player.moveLeft(self.board)
             pos_updated = True
         elif pressed_key in (curses.KEY_RIGHT, ord("d")) and self.player.canMoveRight():
-            Logger.info("Moving ship to the right")
+            Logger.debug("Moving ship to the right")
             self.player.moveRight(self.board)
             pos_updated = True
         elif pressed_key == ord(" "):
-            Logger.info("Pew pew")
+            Logger.debug("Pew pew")
             self.player.spawnProjectile(self.board)
 
         return pos_updated
@@ -196,9 +201,9 @@ class SpaceInvaders:
 
     def updateProjectiles(self) -> None:
         for proj in self.board.getPlayerProjectiles():
-            Logger.info(f"Updating: {proj}")
+            Logger.debug(f"Updating: {proj}")
         for proj in self.board.getPlayerProjectiles():
-            Logger.info(f"Moving projectile {proj} up")
+            Logger.debug(f"Moving projectile {proj} up")
             proj.moveUp(self.board)
         for proj in self.board.getEnemyProjectiles():
             proj.moveDown(self.board)
@@ -207,12 +212,12 @@ class SpaceInvaders:
         self.is_paused = not self.is_paused
 
     def update(self) -> None:
-        Logger.info("Input:")
+        Logger.debug("Input:")
         player_moved: bool = False
 
         for group in InputType:
             pressed_key = self.inputManager.getLastPressedKeyForGroup(group)
-            Logger.info(f"{InputType(group).name}: {pressed_key}")
+            Logger.debug(f"{InputType(group).name}: {pressed_key}")
 
             if pressed_key == curses.ERR:
                 # No input. Check next group.
@@ -249,6 +254,11 @@ class SpaceInvaders:
         text_y, text_x = WindowConfig.PAUSED_TEXT_DRAW_POS
         self.stdscr.addstr(text_y, text_x, WindowConfig.PAUSED_TEXT)
 
+    def drawWinScreen(self) -> None:
+        for pos, text in WindowConfig.getGameWonData():
+            text_y, text_x = pos
+            self.stdscr.addstr(text_y, text_x, text)
+
     def drawText(self) -> None:
         title_y, title_x = WindowConfig.WINDOW_TITLE_DRAW_POS
         self.stdscr.addstr(title_y, title_x, WindowConfig.WINDOW_TITLE)
@@ -256,6 +266,9 @@ class SpaceInvaders:
         score_y, score_x = WindowConfig.SCORE_TEXT_DRAW_POS
         score_text = f"{WindowConfig.SCORE_TEXT}{self.score}"
         self.stdscr.addstr(score_y, score_x, score_text)
+
+        if self.is_won:
+            self.drawWinScreen()
 
 
 ###############

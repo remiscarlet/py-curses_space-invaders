@@ -56,6 +56,35 @@ class WindowConfig:
         TRUE_BOARD_WIDTH // 2 - len(PAUSED_TEXT) // 2,
     )
 
+    GAME_WON_TEXT: str = "Congratulations,\nYou Win!\n\nPRESS Q TO QUIT"
+    GAME_WON_DATA: List[Tuple[Tuple[int, int], str]] = []
+
+    @staticmethod
+    def getGameWonData() -> List[Tuple[Tuple[int, int], str]]:
+        if WindowConfig.GAME_WON_DATA != []:
+            return WindowConfig.GAME_WON_DATA
+
+        lines = WindowConfig.GAME_WON_TEXT.split("\n")
+
+        WC = WindowConfig
+        game_won_data = [
+            (
+                (
+                    WC.BORDER_WIDTH
+                    + WC.TITLE_BAR_HEIGHT
+                    + (Config.BOARD_HEIGHT // 2)
+                    + len(lines) // 2
+                    + idx,  # The 'y' of the drawpos
+                    WC.TRUE_BOARD_WIDTH // 2 - len(line) // 2,  # The 'x' of the drawpos
+                ),
+                line,  # The text being drawn at drawpos
+            )
+            for idx, line in enumerate(lines)
+        ]
+
+        WindowConfig.GAME_WON_DATA = game_won_data
+        return WindowConfig.GAME_WON_DATA
+
     SCORE_TEXT: str = "Score: "
     SCORE_TEXT_DRAW_POS: Tuple[int, int] = (
         BORDER_WIDTH + TITLE_BAR_HEIGHT + Config.BOARD_HEIGHT + BORDER_WIDTH,

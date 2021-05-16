@@ -225,8 +225,6 @@ class Entity:
         if self.__isOutOfBounds(new_y, new_x):
             if self.__isProjectile():
                 Logger.info(f"PROJECTILE OUT OF BOUNDS: {self}")
-                board.logEntityAtPos(new_y, new_x)
-                board.logEntityAtPos(new_y, new_x)
                 return
             else:
                 raise Exception("Entity is being moved out of bounds!")
