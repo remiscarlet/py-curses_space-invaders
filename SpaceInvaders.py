@@ -164,7 +164,7 @@ class SpaceInvaders:
             if new_tick_start():
                 Logger.info("=======TICK START=======")
                 for projectile in self.board.getPlayerProjectiles():
-                    Logger.debug(f"PROJ: {projectile}")
+                    Logger.debug(f"PLAYERPROJS: {projectile}")
                 curr_tick_start_ns = time.time_ns()
 
                 self.update()
@@ -196,16 +196,15 @@ class SpaceInvaders:
         return pos_updated
 
     def updateEnemies(self) -> None:
+        # Traverse the list in reverse order so as to not be affected by .pop's changing length of list
         for enemy in reversed(self.board.getAliveEnemies()):
             enemy.moveToNextPos(self.board)
 
     def updateProjectiles(self) -> None:
-        for proj in self.board.getPlayerProjectiles():
-            Logger.debug(f"Updating: {proj}")
-        for proj in self.board.getPlayerProjectiles():
-            Logger.debug(f"Moving projectile {proj} up")
+        # See updateEnemies() for reversed()
+        for proj in reversed(self.board.getPlayerProjectiles()):
             proj.moveUp(self.board)
-        for proj in self.board.getEnemyProjectiles():
+        for proj in reversed(self.board.getEnemyProjectiles()):
             proj.moveDown(self.board)
 
     def togglePause(self) -> None:

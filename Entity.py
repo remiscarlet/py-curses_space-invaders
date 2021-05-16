@@ -56,13 +56,13 @@ class Entity:
         self.entity_type = entity_type
 
         md5 = hashlib.md5(bytearray(str(time.time()), "utf-8"))
-        self._id = md5.hexdigest()[:8]
+        self._id = md5.hexdigest()
 
-    def __str__(self) -> str:
+    def __repr__(self) -> str:
         try:
-            return f"{EntityType(self.entity_type).name}-{self.symbol}-{self.position}-{self._id}"
+            return f"{EntityType(self.entity_type).name}-{self.symbol}-{self.position}-{self._id[:8]}"
         except AttributeError:
-            return f"{EntityType(self.entity_type).name}-{self.symbol}-NoPos-{self._id}"
+            return f"{EntityType(self.entity_type).name}-{self.symbol}-NoPos-{self._id[:8]}"
 
     def __eq__(self, other) -> bool:
         return self._id == other._id
@@ -74,7 +74,6 @@ class Entity:
         """
         This function assumes BOARD_WIDTH/HEIGHT as the bounds and _not_ TRUE_BOARD_WIDTH/HEIGHT
         """
-        self.__log(f"Setting position: {y}, {x}")
         self.position = (y, x)
 
     def getPos(self) -> Tuple[int, int]:
@@ -110,8 +109,6 @@ class Entity:
         the offset for not just "next pos" but multiple positions ahead.
         """
 
-        self.__log(f"Generating next deltas from pos: {curr_y},{curr_x}")
-
         dx = -1 if curr_y % 2 == 1 else +1  # Left if odd row, Right if even row
         if dx == -1:
             can_move_horizontal = self.canMoveLeft((curr_y, curr_x))
@@ -123,10 +120,8 @@ class Entity:
                 raise Exception(
                     "genNextPos() determined moving down is impossible! (Game over?)"
                 )
-            self.__log(f"Next delta: {+1},{0}")
             offset = (+1, 0)
         else:
-            self.__log(f"Next delta: {0},{dx}")
             offset = (0, dx)
 
         if depth > 1:
@@ -138,7 +133,6 @@ class Entity:
 
             offset = (offset_y + next_offset_y, offset_x + next_offset_x)
 
-        self.__log(f"offset for depth:{depth} - {offset}")
         return offset
 
     def moveToNextPos(self, board: "Board") -> None:
@@ -162,9 +156,9 @@ class Entity:
         Assumes non-true boardsize. Ie, Config.BOARD_WIDTH/HEIGHT instead of TRUE_BOARD_WIDTH/HEIGHT
         """
 
-        self.__log(
-            f"x:{x} < 0 or x:{x} > {Config.BOARD_WIDTH - 1} or y:{y} < 0 or y:{y} > {Config.BOARD_HEIGHT - 1}"
-        )
+        # self.__log(
+        #    f"x:{x} < 0 or x:{x} > {Config.BOARD_WIDTH - 1} or y:{y} < 0 or y:{y} > {Config.BOARD_HEIGHT - 1}"
+        # )
 
         return (
             x < 0 or x > Config.BOARD_WIDTH - 1 or y < 0 or y > Config.BOARD_HEIGHT - 1
@@ -222,16 +216,11 @@ class Entity:
         old_y, old_x = self.position
         new_y, new_x = (old_y + dy, old_x + dx)
 
-        if self.__isOutOfBounds(new_y, new_x):
-            if self.__isProjectile():
-                Logger.info(f"PROJECTILE OUT OF BOUNDS: {self}")
-                return
-            else:
-                raise Exception("Entity is being moved out of bounds!")
+        if self.__isOutOfBounds(new_y, new_x) and not self.__isProjectile():
+            raise Exception("Entity is being moved out of bounds!")
 
         self.__log(f"Moved from old pos {old_y},{old_x} to new pos {new_y},{new_x}")
 
-        board.setEntityAtPos(old_y, old_x, None)
         board.setEntityAtPos(new_y, new_x, self)
 
         self.position = (new_y, new_x)

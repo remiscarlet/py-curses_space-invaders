@@ -65,21 +65,26 @@ class Board:
             for x, entities in enumerate(row_data):
                 if len(entities) < 2:
                     continue
+                elif len(entities) > 2:
+                    Logger.info(f"{entities}")
+                    raise Exception(
+                        "Should not ever have more than two entities on one position!"
+                    )
 
-                Logger.info(f"Detected collision at: (y:{y}, x:{x})")
+                Logger.info(f"Detected collision at: (true_y:{y}, true_x:{x})")
                 Logger.info(f"{entities}")
                 for ent in entities:
                     if ent.entity_type == EntityType.ENEMY:
                         self.incrementScore()
                     Logger.info(f"{ent}")
-                    self.clearEntity(ent)
+                    self.clearPosAndEntity(ent)
 
-    def clearEntity(self, ent: Entity) -> None:
+    def clearPosAndEntity(self, ent: Entity) -> None:
+        Logger.info(f"Clearing: {ent}")
+
         y, x = ent.position
         self.setEntityAtPos(y, x, None)
-
-        instances = self.instances[ent.entity_type]
-        instances.pop(instances.index(ent))
+        self.deleteEntityReferences(ent)
 
     def incrementScore(self) -> None:
         self.space_invaders.incrementScore()
@@ -301,14 +306,26 @@ Ent: {self.getEntityAtPos(y,x)}
         true_x = WindowConfig.convertToTrueX(x)
 
         try:
-            assert true_x > 0 and true_x < WindowConfig.TRUE_BOARD_WIDTH - 1
-            assert true_y > 0 and true_y < WindowConfig.TRUE_BOARD_HEIGHT - 1
-            Logger.debug(f"Setting pos: {y},{x}")
-        except:
-            Logger.info(
-                "Entity was moved out of bounds - Deleting (by not placing on next_board)."
+            assert (
+                true_x >= WindowConfig.convertToTrueX(0)
+                and true_x < WindowConfig.TRUE_BOARD_WIDTH - 1
             )
-            return
+            assert (
+                true_y >= WindowConfig.convertToTrueY(0)
+                and true_y < WindowConfig.TRUE_BOARD_HEIGHT - 1
+            )
+        except:
+
+            if entity is not None:
+                Logger.info(
+                    "Entity was moved out of bounds - Deleting (by not placing on next_board)."
+                )
+                self.deleteEntityReferences(entity)
+                return
+            else:
+                raise Exception(
+                    "Wha-. How are you setting an out-of-bounds pos to None?"
+                )
 
         board = self.curr_board if use_curr_board else self.next_board
         if entity is not None:
@@ -323,3 +340,6 @@ Ent: {self.getEntityAtPos(y,x)}
             self.curr_board = board
         else:
             self.next_board = board
+
+    def deleteEntityReferences(self, entity: Entity) -> None:
+        self.instances[entity.entity_type].remove(entity)

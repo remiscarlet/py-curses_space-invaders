@@ -56,7 +56,7 @@ class WindowConfig:
         TRUE_BOARD_WIDTH // 2 - len(PAUSED_TEXT) // 2,
     )
 
-    GAME_WON_TEXT: str = "Congratulations,\nYou Win!\n\nPRESS Q TO QUIT"
+    GAME_WON_TEXT: str = "Congratulations\nYou Win!\n\nPRESS Q TO QUIT"
     GAME_WON_DATA: List[Tuple[Tuple[int, int], str]] = []
 
     @staticmethod
@@ -73,7 +73,7 @@ class WindowConfig:
                     WC.BORDER_WIDTH
                     + WC.TITLE_BAR_HEIGHT
                     + (Config.BOARD_HEIGHT // 2)
-                    + len(lines) // 2
+                    - len(lines) // 2
                     + idx,  # The 'y' of the drawpos
                     WC.TRUE_BOARD_WIDTH // 2 - len(line) // 2,  # The 'x' of the drawpos
                 ),
