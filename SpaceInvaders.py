@@ -144,12 +144,14 @@ class SpaceInvaders:
             There are definitely more robust ways to do this, but this should be sufficient for now.
         """
 
-        def new_tick_start() -> bool:
-            return target_tick_dur_ns < time.time_ns() - curr_tick_start_ns
-
         # ns -> nanoseconds
         target_tick_dur_ns = 1 * 1000 * 1000 * 1000 / Config.TICKS_PER_SECOND
         curr_tick_start_ns = time.time_ns()
+
+        # def new_tick_start() -> bool:
+        new_tick_start = (
+            lambda: target_tick_dur_ns < time.time_ns() - curr_tick_start_ns
+        )
 
         while True:
             self.inputManager.storeInput()
@@ -166,24 +168,31 @@ class SpaceInvaders:
                 self.update()
                 self.draw()
 
-    def updatePlayer(self, pressed_key: int) -> None:
+    def updatePlayer(self, pressed_key: int) -> bool:
+        """
+        Returns:
+        - Bool, true if player moved. False if player has not moved.
+          Firing does not count as moving.
+        """
+        pos_updated: bool = False
+
         if pressed_key in (curses.KEY_LEFT, ord("a")) and self.player.canMoveLeft():
             Logger.info("Moving ship to the left")
             self.player.moveLeft(self.board)
+            pos_updated = True
         elif pressed_key in (curses.KEY_RIGHT, ord("d")) and self.player.canMoveRight():
             Logger.info("Moving ship to the right")
             self.player.moveRight(self.board)
+            pos_updated = True
         elif pressed_key == ord(" "):
             Logger.info("Pew pew")
             self.player.spawnProjectile(self.board)
 
+        return pos_updated
+
     def updateEnemies(self) -> None:
         for enemy in reversed(self.board.getAliveEnemies()):
             enemy.moveToNextPos(self.board)
-
-    def deleteBufferedDestroys(self) -> None:
-        Logger.info("Deleting buffered destroys")
-        self.board.deleteBufferedDestroys()
 
     def updateProjectiles(self) -> None:
         for proj in self.board.getPlayerProjectiles():
@@ -199,6 +208,8 @@ class SpaceInvaders:
 
     def update(self) -> None:
         Logger.info("Input:")
+        player_moved: bool = False
+
         for group in InputType:
             pressed_key = self.inputManager.getLastPressedKeyForGroup(group)
             Logger.info(f"{InputType(group).name}: {pressed_key}")
@@ -211,12 +222,15 @@ class SpaceInvaders:
                 self.togglePause()
 
             if not self.is_paused and group in (InputType.MOVEMENT, InputType.FIRE):
-                self.updatePlayer(pressed_key)
+                player_moved |= self.updatePlayer(pressed_key)
+
+        if not player_moved:
+            self.player.stayStill(self.board)
 
         if not self.is_paused:
             self.updateProjectiles()
             self.updateEnemies()
-            self.deleteBufferedDestroys()
+            self.board.finalizePosUpdates()
 
     def draw(self) -> None:
         if not self.is_paused:
@@ -229,12 +243,7 @@ class SpaceInvaders:
         self.stdscr.refresh()
 
     def drawGameEntities(self) -> None:
-        for y, row_data in enumerate(self.board.getBoard()):
-            for x, entity in enumerate(row_data):
-                if entity is not None:
-                    self.stdscr.addch(y, x, entity.symbol, Colors.getAttr(entity.color))
-                else:
-                    self.stdscr.addch(y, x, " ")
+        self.board.drawBoard(stdscr=self.stdscr)
 
     def drawPauseScreen(self) -> None:
         text_y, text_x = WindowConfig.PAUSED_TEXT_DRAW_POS

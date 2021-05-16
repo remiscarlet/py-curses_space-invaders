@@ -2,14 +2,19 @@
 from __future__ import annotations
 
 import time
+import hashlib
 from typing import Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    # We only need to import Board for type checking purposes as we only use it
-    # for type hinting in func signatures
+    # We only need to import these for type checking purposes as we only use it
+    # for type hinting in func signatures. Can't normally include or it causes
+    # circular import errors
+    import curses
     from Board import Board
+    from SpaceInvaders import SpaceInvaders
 
 from Config import Config
+from Colors import Colors
 from WindowConfig import WindowConfig
 from EntityType import EntityType
 from Logger import Logger
@@ -31,7 +36,7 @@ class Entity:
     color: int
     entity_type: EntityType
 
-    _id: int
+    _id: str
 
     sizes: WindowConfig
 
@@ -50,13 +55,14 @@ class Entity:
         self.color = color
         self.entity_type = entity_type
 
-        self._id = time.time_ns()
+        md5 = hashlib.md5(bytearray(str(time.time()), "utf-8"))
+        self._id = md5.hexdigest()[:8]
 
     def __str__(self) -> str:
         try:
-            return f"{EntityType(self.entity_type).name}-{self.symbol}-{self.position}"
+            return f"{EntityType(self.entity_type).name}-{self.symbol}-{self.position}-{self._id}"
         except AttributeError:
-            return f"{EntityType(self.entity_type).name}-{self.symbol}-NoPos"
+            return f"{EntityType(self.entity_type).name}-{self.symbol}-NoPos-{self._id}"
 
     def __eq__(self, other) -> bool:
         return self._id == other._id
@@ -64,11 +70,11 @@ class Entity:
     def __log(self, msg: str) -> None:
         Logger.debug(f"{self}: {msg}")
 
-    def setInitialPosition(self, y: int, x: int) -> None:
+    def setPosition(self, y: int, x: int) -> None:
         """
         This function assumes BOARD_WIDTH/HEIGHT as the bounds and _not_ TRUE_BOARD_WIDTH/HEIGHT
         """
-        self.__log(f"Setting initial position: {y}, {x} - is true size")
+        self.__log(f"Setting position: {y}, {x}")
         self.position = (y, x)
 
     def getPos(self) -> Tuple[int, int]:
@@ -97,6 +103,7 @@ class Entity:
         self, curr_y: int, curr_x: int, depth: int = 1
     ) -> Tuple[int, int]:
         """
+        Used for moving enemies left/right, and when appropriate up/down
         Assumes the correct "next pos" is open and valid to move to.
 
         The `depth` arg is "how many steps ahead do you want", ie can get
@@ -145,6 +152,8 @@ class Entity:
 
             self.__move(board, dy, dx)
             self.ticks_since_last_move = 0
+        else:
+            self.stayStill(board)
 
         self.ticks_since_last_move += 1
 
@@ -215,27 +224,12 @@ class Entity:
 
         if self.__isOutOfBounds(new_y, new_x):
             if self.__isProjectile():
-                self.__destroy(board)
+                Logger.info(f"PROJECTILE OUT OF BOUNDS: {self}")
+                board.logEntityAtPos(new_y, new_x)
+                board.logEntityAtPos(new_y, new_x)
                 return
             else:
                 raise Exception("Entity is being moved out of bounds!")
-
-        entity = board.getEntityAtPos(new_y, new_x)
-        if entity is not None:
-            # TODO: "Race condition" on behavior if projectile/non-projectile are "swapping" cells in a given update
-            # depending on if the entity moving out of the cell gets updated first or if the entity moving into cell is updated first.
-            if self.__isProjectile() or entity.__isProjectile():
-                if self.__isProjectile() and entity.__isProjectile():
-                    Logger.info(f"Proj1: {self}")
-                    Logger.info(f"Proj2: {entity}")
-                    raise Exception(
-                        "Bullet on bullet collision?"
-                    )  # For now workaround by delaying shooting to once every other tick
-                self.__handleProjectileCollision(board, entity)
-                return
-            else:
-                self.__log(f"{board.getEntityAtPos(new_y, new_x)}")
-                raise Exception("Destination cell is already occupied!")
 
         self.__log(f"Moved from old pos {old_y},{old_x} to new pos {new_y},{new_x}")
 
@@ -244,22 +238,15 @@ class Entity:
 
         self.position = (new_y, new_x)
 
+    def stayStill(self, board: "Board"):
+        y, x = self.position
+        board.setEntityAtPos(y, x, self)
+
     def __isProjectile(self) -> bool:
         return self.entity_type in (
             EntityType.PLAYER_PROJECTILE,
             EntityType.ENEMY_PROJECTILE,
         )
 
-    def __handleProjectileCollision(self, board: "Board", other: Entity) -> None:
-        self.__destroy(board)
-        other.__destroy(board)
-
-        board.incrementScore()
-
-    def __destroy(self, board: "Board") -> None:
-        Logger.info(f"Destroying: {self}")
-        self_y, self_x = self.position
-        board.setEntityAtPos(self_y, self_x, None)
-
-        if self.entity_type in (EntityType.ENEMY, EntityType.PLAYER_PROJECTILE):
-            board.bufferDestroy(self)
+    def __printBoard(self, board: "Board") -> None:
+        Logger.info(f"\n{board.drawBoard(return_as_str = True)}")
