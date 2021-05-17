@@ -202,7 +202,7 @@ class Board:
             for x, entities in enumerate(row_data):
                 if len(entities) > 1:
                     raise Exception(
-                        "Got to draw step without clearing out multi-entity cells. Should be cleared by collision handlers"
+                        "Got to draw step without clearing out multi-entity cells. Should have been cleared by collision handlers"
                     )
                 entity = entities[0] if len(entities) == 1 else None
                 if entity is not None:

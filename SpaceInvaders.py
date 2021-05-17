@@ -234,7 +234,8 @@ class SpaceInvaders:
         if not self.is_paused:
             self.updateProjectiles()
             self.updateEnemies()
-            self.board.finalizePosUpdates()
+
+        self.board.finalizePosUpdates()
 
     def draw(self) -> None:
         if not self.is_paused:

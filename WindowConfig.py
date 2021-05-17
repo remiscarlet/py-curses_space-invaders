@@ -61,13 +61,29 @@ class WindowConfig:
 
     @staticmethod
     def getGameWonData() -> List[Tuple[Tuple[int, int], str]]:
+        """
+        A method instead of consts because apparently list comprehensions don't have
+        variable access to class vars due to weird "comprehensions in classes" scoping oddities.
+
+        Comprehensions because I ain't calculating that by hand for each line.
+
+        Return shape is:
+        [
+            ((y1, x1), line1),
+            ((y2, x2), line2),
+            ((y3, x3), line3),
+            etc...
+        ]
+
+        Where coords are drawpos for stdscr.addstr()
+        """
         if WindowConfig.GAME_WON_DATA != []:
             return WindowConfig.GAME_WON_DATA
 
         lines = WindowConfig.GAME_WON_TEXT.split("\n")
 
         WC = WindowConfig
-        game_won_data = [
+        game_won_data: List[Tuple[Tuple[int, int], str]] = [
             (
                 (
                     WC.BORDER_WIDTH

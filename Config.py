@@ -20,7 +20,7 @@ class Config:
 
     LOG_PATH: str = "it.was.aliens.log"
 
-    TICKS_PER_SHOT: int = 0
+    TICKS_PER_SHOT: int = 1
 
     # PLAYER_SYMBOL: str = "♕"
     PLAYER_SYMBOL: str = "ﾑ"
